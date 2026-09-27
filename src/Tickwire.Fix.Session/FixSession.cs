@@ -71,6 +71,9 @@ public sealed partial class FixSession : IAsyncDisposable
     /// <summary>Chaos: stop sending heartbeats and stop answering TestRequests (simulates a hung counterparty).</summary>
     public bool SuppressHeartbeats { get; set; }
 
+    /// <summary>Initiator: send ResetSeqNumFlag(141)=Y on the next Logon only (e.g. after losing local state).</summary>
+    public bool ResetNextLogon { get; set; }
+
     /// <summary>Free-form data the host can hang on the session (client id, risk profile, ...).</summary>
     public object? Tag { get; set; }
 
@@ -129,8 +132,15 @@ public sealed partial class FixSession : IAsyncDisposable
         return done.Task;
     }
 
+    private int _disposeState1;
+
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeState1, 1) != 0)
+        {
+            return;
+        }
+
         await _ticker.DisposeAsync().ConfigureAwait(false);
         _commands.Writer.TryComplete();
         await _stop.CancelAsync().ConfigureAwait(false);
@@ -826,7 +836,8 @@ public sealed partial class FixSession : IAsyncDisposable
 
     private async ValueTask SendLogonAsync(bool? echoReset)
     {
-        var reset = echoReset ?? _settings.ResetOnLogon;
+        var reset = echoReset ?? (_settings.ResetOnLogon || ResetNextLogon);
+        ResetNextLogon = false;
         if (_settings.Role == SessionRole.Initiator && reset)
         {
             _store.Reset(Now);

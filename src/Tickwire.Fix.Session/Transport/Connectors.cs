@@ -160,8 +160,15 @@ public sealed partial class FixAcceptor : IAsyncDisposable
         await transport.DisposeAsync().ConfigureAwait(false);
     }
 
+    private int _disposeState1;
+
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeState1, 1) != 0)
+        {
+            return;
+        }
+
         await _stop.CancelAsync().ConfigureAwait(false);
         _listener?.Dispose();
         if (_acceptLoop is not null)
@@ -255,8 +262,15 @@ public sealed class FixInitiator : IAsyncDisposable
         }
     }
 
+    private int _disposeState2;
+
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeState2, 1) != 0)
+        {
+            return;
+        }
+
         await _stop.CancelAsync().ConfigureAwait(false);
         if (_loop is not null)
         {

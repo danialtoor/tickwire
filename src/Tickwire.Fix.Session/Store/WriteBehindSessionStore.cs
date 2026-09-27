@@ -118,8 +118,15 @@ public sealed class WriteBehindSessionStore : ISessionStore, IAsyncDisposable
         await done.Task.ConfigureAwait(false);
     }
 
+    private int _disposeState1;
+
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeState1, 1) != 0)
+        {
+            return;
+        }
+
         _ops.Writer.TryComplete();
         try
         {

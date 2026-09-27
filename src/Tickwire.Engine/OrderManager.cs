@@ -85,10 +85,14 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
     private long _nextOrderId;
     private long _nextExecId;
     private volatile bool _globalKillSwitch;
+    private readonly string _execIdPrefix;
 
+    /// <param name="firstOrderId">First internal order number. Hosts pass a value that can't collide with orders stored by a previous run.</param>
+    /// <param name="execIdPrefix">Makes ExecIDs unique across restarts (FIX requires ExecID to be unique per trading day).</param>
     public OrderManager(IExecutionVenue venue, MarketDataCache marketData, TimeProvider? time = null, ILogger? logger = null,
-        long firstOrderId = 1)
+        long firstOrderId = 1, string execIdPrefix = "")
     {
+        _execIdPrefix = execIdPrefix;
         _venue = venue;
         _marketData = marketData;
         _time = time ?? TimeProvider.System;
@@ -155,8 +159,15 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
 
     public Task FlushAsync() => InvokeAsync(() => true);
 
+    private int _disposeState1;
+
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeState1, 1) != 0)
+        {
+            return;
+        }
+
         _inbox.Writer.TryComplete();
         await _stop.CancelAsync().ConfigureAwait(false);
         if (_loop is not null)
@@ -641,7 +652,7 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
         }
     }
 
-    private string NextExecId() => $"EX{++_nextExecId:D9}";
+    private string NextExecId() => $"EX{_execIdPrefix}{++_nextExecId:D7}";
 
     [LoggerMessage(Level = LogLevel.Error, Message = "OMS failed handling {Item}")]
     private static partial void OmsError(ILogger logger, Exception ex, string item);

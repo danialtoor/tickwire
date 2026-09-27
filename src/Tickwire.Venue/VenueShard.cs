@@ -218,8 +218,15 @@ public sealed partial class VenueShard : IAsyncDisposable
         return done.Task;
     }
 
+    private int _disposeState1;
+
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeState1, 1) != 0)
+        {
+            return;
+        }
+
         if (_timer is not null)
         {
             await _timer.DisposeAsync().ConfigureAwait(false);
@@ -510,8 +517,15 @@ public sealed class SimulatedVenue : IAsyncDisposable
 
     public Task FlushAsync() => Task.WhenAll(_shards.Values.Select(s => s.FlushAsync()));
 
+    private int _disposeState2;
+
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeState2, 1) != 0)
+        {
+            return;
+        }
+
         foreach (var shard in _shards.Values)
         {
             await shard.DisposeAsync().ConfigureAwait(false);
