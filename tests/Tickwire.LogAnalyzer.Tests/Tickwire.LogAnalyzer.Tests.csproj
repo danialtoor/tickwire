@@ -19,4 +19,8 @@
     <ProjectReference Include="..\..\src\Tickwire.LogAnalyzer\Tickwire.LogAnalyzer.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="../../samples/**" Link="samples/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -106,16 +106,23 @@ services.AddRateLimiter(o =>
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     static string ClientIp(HttpContext http) =>
         http.Request.Headers["Fly-Client-IP"].FirstOrDefault() ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    o.AddPolicy("guest", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+    // Operators (valid X-Admin-Key) aren't rate limited, so load tests can open many sessions.
+    static bool IsAdmin(HttpContext http)
+    {
+        var key = http.RequestServices.GetRequiredService<IOptions<TickwireOptions>>().Value.AdminKey;
+        return !string.IsNullOrEmpty(key) && http.Request.Headers["X-Admin-Key"] == key;
+    }
+
+    o.AddPolicy("guest", http => IsAdmin(http) ? RateLimitPartition.GetNoLimiter("admin") : RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
-    o.AddPolicy("orders", http => RateLimitPartition.GetTokenBucketLimiter(ClientIp(http),
+    o.AddPolicy("orders", http => IsAdmin(http) ? RateLimitPartition.GetNoLimiter("admin") : RateLimitPartition.GetTokenBucketLimiter(ClientIp(http),
         _ => new TokenBucketRateLimiterOptions
         {
             TokenLimit = 40,
             TokensPerPeriod = 20,
             ReplenishmentPeriod = TimeSpan.FromSeconds(1),
         }));
-    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http => IsAdmin(http) ? RateLimitPartition.GetNoLimiter("admin") : RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 600, Window = TimeSpan.FromMinutes(1) }));
 });
 services.Configure<ForwardedHeadersOptions>(o =>

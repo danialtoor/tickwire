@@ -1,11 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>tickwire</ToolCommandName>
+    <PackageId>Tickwire.Cli</PackageId>
+    <Description>FIX support tools: log analyzer, message decoder, session listing.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Tickwire.LogAnalyzer\Tickwire.LogAnalyzer.csproj" />
   </ItemGroup>
-
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-  </PropertyGroup>
 
 </Project>

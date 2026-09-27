@@ -487,3 +487,8 @@ web/dist/
 web/test-results/
 web/playwright-report/
 web/.vite/
+
+# python
+__pycache__/
+*.pyc
+.venv/

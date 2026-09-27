@@ -1,0 +1,22 @@
+[
+  {
+    "file": "01-gap-recovered-and-unfilled.log",
+    "description": "A fill is lost and recovered through ResendRequest; later two messages vanish for good."
+  },
+  {
+    "file": "02-sequence-too-low.log",
+    "description": "A client restarts without its message store and logs on from seq 1."
+  },
+  {
+    "file": "03-garbled-messages.log",
+    "description": "One order with a bad CheckSum, one with a bad BodyLength; '|' delimited, as pasted into a ticket."
+  },
+  {
+    "file": "04-broken-state-machine.log",
+    "description": "A counterparty's OMS reports a fill after Filled, a LeavesQty that doesn't add up and a reused ExecID."
+  },
+  {
+    "file": "05-orders-not-acking.log",
+    "description": "\"My orders aren't acking\": a session reject, a silent venue and a heartbeat timeout."
+  }
+]

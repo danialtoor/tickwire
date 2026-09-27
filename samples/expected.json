@@ -1,0 +1,7 @@
+{
+  "01-gap-recovered-and-unfilled.log": ["SEQ_GAP", "SEQ_GAP_RECOVERED"],
+  "02-sequence-too-low.log": ["LOGOUT_REASON", "SEQ_TOO_LOW"],
+  "03-garbled-messages.log": ["GARBLED", "SEQ_GAP_RECOVERED"],
+  "04-broken-state-machine.log": ["CUMQTY_DECREASED", "DUPLICATE_EXECID", "FILL_SUM_MISMATCH", "QTY_INVARIANT", "STATE_REGRESSION", "UNKNOWN_ORDER"],
+  "05-orders-not-acking.log": ["HEARTBEAT_EXCEEDED", "MISSING_REQUIRED_TAG", "NO_ACK", "SESSION_REJECT"]
+}
