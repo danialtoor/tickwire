@@ -21,4 +21,8 @@
     <ProjectReference Include="..\..\src\Tickwire.Api\Tickwire.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="../../src/Tickwire.Fix/Spec/FIX44.xml" Link="FIX44.xml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
