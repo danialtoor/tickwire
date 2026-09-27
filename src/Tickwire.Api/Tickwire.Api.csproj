@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tickwire.Persistence\Tickwire.Persistence.csproj" />
+    <ProjectReference Include="..\Tickwire.LogAnalyzer\Tickwire.LogAnalyzer.csproj" />
+    <ProjectReference Include="..\Tickwire.Fix.Session\Tickwire.Fix.Session.csproj" />
+    <ProjectReference Include="..\Tickwire.Engine\Tickwire.Engine.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+  </PropertyGroup>
+
+</Project>

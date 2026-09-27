@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Hand-written FIX 4.4 codec: framing, parsing, serialization, checksum, and data dictionary.</Description>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Spec/FIX44.xml" LogicalName="Tickwire.Fix.Spec.FIX44.xml" />
+    <None Include="Spec/QUICKFIX-LICENSE.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tickwire.Fix.Tests" />
+  </ItemGroup>
+
+</Project>
