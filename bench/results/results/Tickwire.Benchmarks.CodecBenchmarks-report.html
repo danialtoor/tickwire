@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Tickwire.Benchmarks.CodecBenchmarks-20260927-163135</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, macOS Tahoe 26.5 (25F71) [Darwin 25.5.0]
+Apple M2, 1 CPU, 8 logical and 8 physical cores
+.NET SDK 10.0.401
+  [Host]     : .NET 10.0.12 (10.0.12, 10.0.1226.42308), Arm64 RyuJIT armv8.0-a
+  DefaultJob : .NET 10.0.12 (10.0.12, 10.0.1226.42308), Arm64 RyuJIT armv8.0-a
+</code></pre>
+<pre><code></code></pre>
+
+<table>
+<thead><tr><th>Method           </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>ParseNewOrderSingle</td><td>299.96 ns</td><td>1.155 ns</td><td>0.964 ns</td><td>0.0420</td><td>352 B</td>
+</tr><tr><td>ParseExecutionReport</td><td>345.19 ns</td><td>3.956 ns</td><td>3.700 ns</td><td>0.0477</td><td>400 B</td>
+</tr><tr><td>SerializeNewOrderSingle</td><td>383.28 ns</td><td>2.470 ns</td><td>2.062 ns</td><td>0.0048</td><td>40 B</td>
+</tr><tr><td>FrameNewOrderSingle</td><td>10.04 ns</td><td>0.103 ns</td><td>0.080 ns</td><td>-</td><td>-</td>
+</tr><tr><td>ValidateNewOrderSingle</td><td>949.24 ns</td><td>11.532 ns</td><td>10.223 ns</td><td>0.0458</td><td>384 B</td>
+</tr><tr><td>Checksum</td><td>11.73 ns</td><td>0.097 ns</td><td>0.081 ns</td><td>-</td><td>-</td>
+</tr></tbody></table>
+</body>
+</html>
