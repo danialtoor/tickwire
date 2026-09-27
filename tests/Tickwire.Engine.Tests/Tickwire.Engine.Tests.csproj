@@ -18,6 +18,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tickwire.Engine\Tickwire.Engine.csproj" />
+    <ProjectReference Include="..\..\src\Tickwire.Pricing\Tickwire.Pricing.csproj" />
+    <ProjectReference Include="..\..\src\Tickwire.Venue\Tickwire.Venue.csproj" />
   </ItemGroup>
 
 </Project>

@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Tickwire.Fix\Tickwire.Fix.csproj" />
     <ProjectReference Include="..\Tickwire.Venue\Tickwire.Venue.csproj" />
     <ProjectReference Include="..\Tickwire.Pricing\Tickwire.Pricing.csproj" />
+    <ProjectReference Include="..\Tickwire.Fix.Session\Tickwire.Fix.Session.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
