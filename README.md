@@ -70,7 +70,7 @@ Codec micro-benchmarks (BenchmarkDotNet, .NET 10, Apple M2; full output in
 | Operation | Mean | Allocated |
 |---|---:|---:|
 | Parse NewOrderSingle (21 fields, verify BodyLength + CheckSum) | 300 ns | 352 B |
-| Parse ExecutionReport (28 fields) | 345 ns | 400 B |
+| Parse ExecutionReport (25 fields) | 345 ns | 400 B |
 | Serialize NewOrderSingle (pooled buffer) | 383 ns | 40 B |
 | Frame one message out of a stream buffer | 10 ns | 0 B |
 | Validate against the FIX 4.4 dictionary | 949 ns | 384 B |
