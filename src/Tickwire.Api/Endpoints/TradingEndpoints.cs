@@ -112,7 +112,8 @@ public static class TradingEndpoints
                 return Results.Ok(orders.Select(o =>
                 {
                     var clientView = trader?.ClientView.GetValueOrDefault(o.OrderId);
-                    var inSync = clientView is null || (clientView.OrdStatus == (char)o.Status && clientView.CumQty == o.CumQty);
+                    // In sync only once the client has seen reports that bring it to the OMS's state.
+                    var inSync = clientView is not null && clientView.OrdStatus == (char)o.Status && clientView.CumQty == o.CumQty;
                     return new OrderRowDto(BlotterRowDto.From(o), clientView, inSync);
                 }));
             })
