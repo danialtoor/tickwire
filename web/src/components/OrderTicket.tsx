@@ -146,6 +146,7 @@ export function OrderTicket({ quote, book, token, preset, disabled, onSent }: Pr
 
       <button
         type="button"
+        data-testid="ticket-submit"
         onClick={submit}
         disabled={!quote || !token || busy || disabled || (type === 'limit' && !(priceNum > 0))}
         className={cn(

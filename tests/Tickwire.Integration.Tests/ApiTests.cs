@@ -16,10 +16,18 @@ using Tickwire.Fix;
 namespace Tickwire.Integration.Tests;
 
 /// <summary>The whole application in-process (in-memory persistence), with the FIX acceptor on a free TCP port.</summary>
-public sealed class ApiFactory : WebApplicationFactory<Program>
+public class ApiFactory : WebApplicationFactory<Program>
 {
+    private readonly string _connectionString;
+
     public ApiFactory()
+        : this(string.Empty)
     {
+    }
+
+    protected ApiFactory(string connectionString)
+    {
+        _connectionString = connectionString;
         using var probe = new TcpListener(IPAddress.Loopback, 0);
         probe.Start();
         FixPort = ((IPEndPoint)probe.LocalEndpoint).Port;
@@ -33,7 +41,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
-        builder.UseSetting("ConnectionStrings:Default", "");
+        builder.UseSetting("ConnectionStrings:Default", _connectionString);
         builder.UseSetting("Tickwire:FixPort", FixPort.ToString(System.Globalization.CultureInfo.InvariantCulture));
         builder.UseSetting("Tickwire:AdminKey", "test-admin");
         builder.UseSetting("Tickwire:PublicFixHost", "127.0.0.1");

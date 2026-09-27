@@ -56,7 +56,7 @@ export function Layout() {
       </header>
 
       {mode === 'replay' && (
-        <div className="border-b border-warn/30 bg-warn-soft px-4 py-2 text-center text-sm text-warn" role="status">
+        <div className="border-b border-warn/30 bg-warn-soft px-4 py-2 text-center text-sm text-warn" role="status" data-testid="replay-banner">
           The live backend is unreachable, so you're watching a recorded session. The decoder and log analyzer still run fully in your
           browser.
         </div>

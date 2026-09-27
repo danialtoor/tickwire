@@ -1,0 +1,44 @@
+# fly deploy -c deploy/fly.api.toml   (app name is set by scripts/fly-setup.sh if the default is taken)
+app = "tickwire-api"
+primary_region = "ord"
+
+[build]
+  dockerfile = "Dockerfile.api"
+
+[env]
+  Tickwire__PublicFixHost = "tickwire-api.fly.dev"
+  Tickwire__FixPort = "9878"
+  ASPNETCORE_ENVIRONMENT = "Production"
+
+# HTTPS: REST, SignalR, Swagger, FIX over WebSocket.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"   # the matching engine and market makers must keep running
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "15s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+# Raw FIX over TCP. Needs a dedicated IPv4 (fly ips allocate-v4); no TLS handler, bytes pass straight through.
+[[services]]
+  internal_port = 9878
+  protocol = "tcp"
+  auto_stop_machines = "off"
+
+  [[services.ports]]
+    port = 9878
+
+  [[services.tcp_checks]]
+    grace_period = "20s"
+    interval = "15s"
+    timeout = "3s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

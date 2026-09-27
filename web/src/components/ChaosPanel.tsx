@@ -60,6 +60,7 @@ export function ChaosPanel({ token, compId, onFired }: { token: string | null; c
           <button
             key={a.id}
             type="button"
+            data-testid={`chaos-${a.id}`}
             disabled={!token || busy !== null}
             onClick={() => fire(a)}
             className="group rounded-lg border border-line bg-bg px-3 py-2 text-left transition-colors hover:border-warn/50 disabled:opacity-50"

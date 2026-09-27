@@ -1,0 +1,11 @@
+name: Bug
+description: Something behaves differently from docs/fix-spec.md or the UI
+labels: [bug]
+body:
+  - type: textarea
+    attributes: { label: What happened, description: Include the FIX messages (| delimited) if it's a protocol issue. }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: What you expected }
+  - type: input
+    attributes: { label: Session / ClOrdID, description: e.g. GST-7Q2K, ClOrdID 7Q2K-1a4-3 }

@@ -1,0 +1,12 @@
+**/bin
+**/obj
+web/
+tests/
+bench/
+docs/
+samples/
+clients/
+tools/
+.git
+.github
+**/node_modules

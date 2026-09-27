@@ -11,7 +11,8 @@
     "test": "vitest run",
     "preview": "vite preview --port 4173",
     "gen:dictionary": "node scripts/gen-fix-dictionary.mjs",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "record:replay": "node scripts/record-replay.ts"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.11",

@@ -44,7 +44,7 @@ export function Blotter({ rows, token, selectedClOrdId, onSelect, onAction }: Pr
   }
 
   return (
-    <div className="scroll-thin max-h-[360px] overflow-auto">
+    <div className="scroll-thin max-h-[360px] overflow-auto" data-testid="blotter">
       <table className="w-full text-left text-[12.5px]">
         <thead className="sticky top-0 z-10 bg-panel text-[10.5px] uppercase tracking-wider text-muted">
           <tr className="[&>th]:border-b [&>th]:border-line [&>th]:px-2 [&>th]:py-1.5 [&>th]:font-medium">

@@ -1,0 +1,34 @@
+# Local full stack: MySQL 8 + the API (REST/SignalR on 8080, FIX on 9878). The web app runs with `npm run dev` in web/.
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-tickwire-dev}
+      MYSQL_DATABASE: tickwire
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysqldata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-tickwire-dev}"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.api
+    environment:
+      ConnectionStrings__Default: "Server=mysql;Port=3306;Database=tickwire;User=root;Password=${MYSQL_ROOT_PASSWORD:-tickwire-dev};AllowPublicKeyRetrieval=True;"
+      Tickwire__AdminKey: ${TICKWIRE_ADMIN_KEY:-dev-admin-key}
+      Tickwire__PublicFixHost: localhost
+    ports:
+      - "8080:8080"
+      - "9878:9878"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  mysqldata:

@@ -68,7 +68,7 @@ export function Inspector({ wire, logs, view, onViewChange, orderFilter, onClear
   const selected = wire.find((w) => w.id === selectedId) ?? fallback
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col" data-testid="inspector">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <h2 className="panel-title mr-1">FIX Inspector</h2>
         <div className="flex rounded-md border border-line bg-bg p-0.5 text-[11px]">
@@ -132,6 +132,10 @@ function WireRow({ e, view, selected, onSelect }: { e: WireEvent; view: Inspecto
   return (
     <li
       onClick={onSelect}
+      data-testid="wire-row"
+      data-msgtype={e.msgType}
+      data-side={e.side}
+      data-disposition={e.disposition}
       className={cn(
         'flash-new grid cursor-pointer grid-cols-[74px_28px_40px_minmax(0,1fr)] items-center gap-1.5 border-b border-line/50 px-2 py-1 hover:bg-panel-2/70',
         selected && 'bg-panel-2',

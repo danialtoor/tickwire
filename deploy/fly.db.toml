@@ -1,0 +1,20 @@
+# MySQL 8 on a Fly volume, reachable only on the private network as <app>.internal:3306.
+app = "tickwire-db"
+primary_region = "ord"
+
+[build]
+  image = "mysql:8.4"
+
+[env]
+  MYSQL_DATABASE = "tickwire"
+
+[mounts]
+  source = "mysqldata"
+  destination = "/var/lib/mysql"
+
+[processes]
+  app = "--innodb-buffer-pool-size=128M --performance-schema=OFF --max-connections=60"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

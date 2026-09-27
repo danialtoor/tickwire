@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+# Build context: repository root.  docker build -f deploy/Dockerfile.api .
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Restore first so package layers are cached between code changes.
+COPY global.json Directory.Build.props ./
+COPY src/Tickwire.Fix/Tickwire.Fix.csproj src/Tickwire.Fix/
+COPY src/Tickwire.Fix.Session/Tickwire.Fix.Session.csproj src/Tickwire.Fix.Session/
+COPY src/Tickwire.Pricing/Tickwire.Pricing.csproj src/Tickwire.Pricing/
+COPY src/Tickwire.Venue/Tickwire.Venue.csproj src/Tickwire.Venue/
+COPY src/Tickwire.Engine/Tickwire.Engine.csproj src/Tickwire.Engine/
+COPY src/Tickwire.Persistence/Tickwire.Persistence.csproj src/Tickwire.Persistence/
+COPY src/Tickwire.LogAnalyzer/Tickwire.LogAnalyzer.csproj src/Tickwire.LogAnalyzer/
+COPY src/Tickwire.Api/Tickwire.Api.csproj src/Tickwire.Api/
+RUN dotnet restore src/Tickwire.Api/Tickwire.Api.csproj
+
+COPY src/ src/
+RUN dotnet publish src/Tickwire.Api/Tickwire.Api.csproj -c Release -o /app --no-restore /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app ./
+ENV ASPNETCORE_URLS=http://+:8080 \
+    DOTNET_gcServer=0 \
+    DOTNET_TieredPGO=1
+EXPOSE 8080 9878
+USER app
+ENTRYPOINT ["dotnet", "Tickwire.Api.dll"]

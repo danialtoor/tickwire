@@ -1,0 +1,9 @@
+name: Task
+description: A unit of planned work (one PR)
+labels: [task]
+body:
+  - type: textarea
+    attributes: { label: Goal }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Done when }
