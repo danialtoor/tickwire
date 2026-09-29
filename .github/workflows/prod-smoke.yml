@@ -13,7 +13,7 @@ permissions:
 env:
   API: ${{ vars.PROD_API_URL || 'https://tickwire-api.fly.dev' }}
   FIX: ${{ vars.PROD_FIX_ENDPOINT || 'tickwire-api.fly.dev:9878' }}
-  WEB: ${{ vars.PROD_WEB_URL || 'https://tickwire.vercel.app' }}
+  WEB: ${{ vars.PROD_WEB_URL || 'https://tickwire-fix.vercel.app' }}
 
 jobs:
   smoke:

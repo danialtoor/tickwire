@@ -4,9 +4,12 @@
 options market.** Every click in the web trader produces real FIX messages you can inspect, break on purpose, and
 watch recover.
 
-<!-- BADGES -->
+[![CI](https://github.com/danialtoor/tickwire/actions/workflows/ci.yml/badge.svg)](https://github.com/danialtoor/tickwire/actions/workflows/ci.yml)
+[![Deploy](https://github.com/danialtoor/tickwire/actions/workflows/deploy.yml/badge.svg)](https://github.com/danialtoor/tickwire/actions/workflows/deploy.yml)
+[![Production smoke](https://github.com/danialtoor/tickwire/actions/workflows/prod-smoke.yml/badge.svg)](https://github.com/danialtoor/tickwire/actions/workflows/prod-smoke.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Live:** <!-- LIVE_URL --> · **API:** <!-- API_URL -->/swagger · **FIX:** `<!-- FIX_HOST -->:9878`
+**Live:** [tickwire-fix.vercel.app](https://tickwire-fix.vercel.app) · **API:** [tickwire-api.fly.dev/swagger](https://tickwire-api.fly.dev/swagger) · **FIX:** `tickwire-api.fly.dev:9878`
 
 > Portfolio project. Not affiliated with any trading firm; simulated markets only, no real orders or money.
 
@@ -27,7 +30,7 @@ watch recover.
 
 ```bash
 pip install simplefix
-python clients/python/example.py --api <!-- API_URL -->
+python clients/python/example.py --api https://tickwire-api.fly.dev
 ```
 
 ![The FIX Inspector after a chaos drop: queued, ResendRequest, PossDup resends, GapFill](docs/images/inspector-recovery.png)

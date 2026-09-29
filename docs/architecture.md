@@ -110,7 +110,7 @@ Readers on other threads use immutable snapshots (`OrderView`, `QuoteSnapshot`) 
 
 ```mermaid
 flowchart LR
-  V[Vercel<br/>tickwire.vercel.app] -- "/api/* rewrite" --> A
+  V[Vercel<br/>tickwire-fix.vercel.app] -- "/api/* rewrite" --> A
   Br[Browser] --> V
   Br -- "wss /hubs/live" --> A
   Q[FIX clients] -- "TCP 9878 (dedicated IPv4)" --> A

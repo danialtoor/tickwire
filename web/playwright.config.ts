@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Local: starts `vite` (which proxies to the API on :8080). Production: PLAYWRIGHT_BASE_URL=https://tickwire.vercel.app
+// Local: starts `vite` (which proxies to the API on :8080). Production: PLAYWRIGHT_BASE_URL=https://tickwire-fix.vercel.app
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:5173'
 const local = !process.env.PLAYWRIGHT_BASE_URL
 
