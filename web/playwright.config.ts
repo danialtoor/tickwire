@@ -9,7 +9,7 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
-  workers: 1, // each test provisions a guest; the API allows 10 per minute per IP
+  workers: 1, // each test provisions a guest; the API rate-limits guest creation per IP
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {

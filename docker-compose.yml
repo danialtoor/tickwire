@@ -23,6 +23,7 @@ services:
       ConnectionStrings__Default: "Server=mysql;Port=3306;Database=tickwire;User=root;Password=${MYSQL_ROOT_PASSWORD:-tickwire-dev};AllowPublicKeyRetrieval=True;"
       Tickwire__AdminKey: ${TICKWIRE_ADMIN_KEY:-dev-admin-key}
       Tickwire__PublicFixHost: localhost
+      Tickwire__GuestsPerMinute: ${TICKWIRE_GUESTS_PER_MINUTE:-20}
     ports:
       - "8080:8080"
       - "9878:9878"

@@ -76,6 +76,7 @@ jobs:
       - name: Start MySQL + API
         run: |
           cp .env.example .env
+          echo "TICKWIRE_GUESTS_PER_MINUTE=500" >> .env   # smoke, Pester and Playwright all create guests
           docker compose up -d --build --wait
           curl -fsS --retry 30 --retry-delay 2 --retry-all-errors http://localhost:8080/health
       - uses: actions/setup-python@v5

@@ -13,6 +13,9 @@ public sealed class TickwireOptions
 
     public int GuestTtlHours { get; set; } = 24;
 
+    /// <summary>Guest (and FIX credential) provisioning allowed per client IP per minute.</summary>
+    public int GuestsPerMinute { get; set; } = 20;
+
     /// <summary>Guest sessions use a short heartbeat so TestRequest/timeout chaos is visible within seconds.</summary>
     public int GuestHeartBtInt { get; set; } = 10;
 

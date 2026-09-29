@@ -114,7 +114,11 @@ services.AddRateLimiter(o =>
     }
 
     o.AddPolicy("guest", http => IsAdmin(http) ? RateLimitPartition.GetNoLimiter("admin") : RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = http.RequestServices.GetRequiredService<IOptions<TickwireOptions>>().Value.GuestsPerMinute,
+            Window = TimeSpan.FromMinutes(1),
+        }));
     o.AddPolicy("orders", http => IsAdmin(http) ? RateLimitPartition.GetNoLimiter("admin") : RateLimitPartition.GetTokenBucketLimiter(ClientIp(http),
         _ => new TokenBucketRateLimiterOptions
         {
