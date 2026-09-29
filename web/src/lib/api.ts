@@ -1,10 +1,33 @@
 import type { ChaosResult, ConnectInfo, Guest, Me, OrderRow, Ops, RiskLimits, SessionTraffic } from './types'
 
 /**
- * REST goes to the same origin (Vite proxies it in development; Vercel rewrites /api/* to the API in production).
- * SignalR can't go through a Vercel rewrite, so it connects to the API host directly.
+ * In development everything is same-origin (Vite proxies /api and /hubs to the API). In production the browser talks
+ * to the API host directly: SignalR can't go through a Vercel rewrite anyway, and skipping the extra hop removes a
+ * failure point. CORS on the API allows the Vercel domains.
  */
 export const hubBase: string = import.meta.env.VITE_API_BASE_URL ?? ''
+const apiBase = hubBase
+
+export const apiUrl = (path: string): string => apiBase + path
+
+const TRANSIENT = new Set([502, 503, 504])
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * fetch with retries for transient gateway errors and network failures. Only used for requests that are safe to repeat
+ * (GETs, guest creation): an order must never be sent twice. A 503 problem+json from the API itself is not retried.
+ */
+async function fetchWithRetry(url: string, init: RequestInit, attempts = 3): Promise<Response> {
+  for (let i = 1; ; i++) {
+    try {
+      const res = await fetch(url, init)
+      if (!TRANSIENT.has(res.status) || i >= attempts || res.headers.get('content-type')?.includes('problem+json')) return res
+    } catch (e) {
+      if (i >= attempts || init.signal?.aborted) throw e
+    }
+    await sleep(300 * i)
+  }
+}
 
 const TOKEN_KEY = 'tickwire.guest'
 
@@ -36,11 +59,12 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit & { token?: string } = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit & { token?: string; retry?: boolean } = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body && !headers.has('content-type')) headers.set('content-type', 'application/json')
   if (init.token) headers.set('authorization', `Bearer ${init.token}`)
-  const res = await fetch(path, { ...init, headers })
+  const retry = init.retry ?? (init.method === undefined || init.method === 'GET')
+  const res = retry ? await fetchWithRetry(apiBase + path, { ...init, headers }) : await fetch(apiBase + path, { ...init, headers })
   if (!res.ok) {
     let detail = res.statusText
     try {
@@ -58,10 +82,10 @@ async function request<T>(path: string, init: RequestInit & { token?: string } =
 
 export const api = {
   health: async (signal?: AbortSignal) => {
-    const res = await fetch('/api/health', { signal, cache: 'no-store' })
+    const res = await fetchWithRetry(`${apiBase}/api/health`, { signal, cache: 'no-store' })
     return res.ok
   },
-  createGuest: () => request<Guest>('/api/guest', { method: 'POST' }),
+  createGuest: () => request<Guest>('/api/guest', { method: 'POST', retry: true }),
   me: (token: string) => request<Me>('/api/me', { token }),
   orders: (token: string) => request<OrderRow[]>('/api/orders', { token }),
   placeOrder: (token: string, body: { contractId: number; side: string; type: string; tif: string; price: number | null; quantity: number }) =>

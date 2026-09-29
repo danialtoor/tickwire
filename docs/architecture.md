@@ -119,7 +119,7 @@ flowchart LR
   GH -- "smoke every 30 min" --> A
 ```
 
-The frontend is static on Vercel. The backend must be a long-running process (matching engine, market makers, raw
+The frontend is static on Vercel and calls the API host directly (CORS allows the Vercel domains; the `/api` rewrite remains as a fallback). The backend must be a long-running process (matching engine, market makers, raw
 TCP listener, WebSockets), which Vercel's serverless model can't host, so it runs on Fly.io. SignalR connects to
 the API host directly because Vercel rewrites don't proxy WebSockets; CORS allows the Vercel production and preview
 domains.

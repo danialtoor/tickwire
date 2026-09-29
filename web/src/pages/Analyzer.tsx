@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { analyze, type AnalysisResult, type Diagnostic } from '../analyzer/analyze'
+import { apiUrl } from '../lib/api'
 import { cn } from '../lib/format'
 import { useStore } from '../state/store'
 
@@ -42,7 +43,7 @@ export default function Analyzer() {
     setBusy(true)
     try {
       if (useServer) {
-        const res = await fetch('/api/analyzer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: input }) })
+        const res = await fetch(apiUrl('/api/analyzer'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: input }) })
         if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? res.statusText)
         const data = await res.json()
         setResult(fromServer(data))

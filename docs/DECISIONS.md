@@ -15,3 +15,4 @@ One line per choice the plan left open. Significant choices get an ADR in `docs/
 - 2026-09-27: Order numbers start from seconds-since-2025 × 1000 and ExecIDs carry a boot tag, so neither repeats across restarts.
 - 2026-09-27: Guests manage only their own client (limits, kill switch, sessions, chaos). Admin endpoints (`X-Admin-Key`) cover global kill switch, audit log and the nightly reset.
 - 2026-09-27: Garbled first messages and unknown CompIDs get a best-effort Logout with a reason before disconnect, instead of a silent close; silent disconnects are the most common onboarding support ticket.
+- 2026-09-29: In production the browser calls the API host directly (CORS) instead of through the Vercel /api rewrite, which returned intermittent 502s (DNS_HOSTNAME_EMPTY) right after the Fly IPs were allocated. The rewrite stays as a fallback. Safe requests (GETs, guest creation) retry on 502/503/504.
