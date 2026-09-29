@@ -4,6 +4,7 @@ import { Blotter } from '../components/Blotter'
 import { BookLadder } from '../components/BookLadder'
 import { ChainTable, type Pick } from '../components/ChainTable'
 import { ChaosPanel } from '../components/ChaosPanel'
+import { ExpiryBar } from '../components/ExpiryBar'
 import { Inspector, type InspectorView } from '../components/Inspector'
 import { OrderTicket } from '../components/OrderTicket'
 import { SpotChart } from '../components/SpotChart'
@@ -159,18 +160,6 @@ export default function Trader() {
             </button>
           ))}
         </div>
-        <select
-          value={chain?.expiry ?? ''}
-          onChange={(e) => select({ expiry: e.target.value, contractId: null })}
-          className="rounded-lg border border-line bg-panel px-2 py-2 text-sm"
-          aria-label="Expiry"
-        >
-          {(current?.expiries ?? (chain ? [chain.expiry] : [])).map((e) => (
-            <option key={e} value={e}>
-              {expiryLabel(e)}
-            </option>
-          ))}
-        </select>
         <div className="ml-auto flex flex-wrap items-center gap-3 rounded-lg border border-line bg-panel px-3 py-1.5 text-[11.5px]">
           <span className="text-muted">FIX session</span>
           <span className="num font-medium">{guest?.clientCompId ?? (mode === 'replay' ? 'GST-REPLAY' : '…')}</span>
@@ -202,6 +191,12 @@ export default function Trader() {
               spot {px(chain?.spot)} · theo = Black-Scholes on a skewed vol surface
             </span>
           </div>
+          <ExpiryBar
+            expiries={current?.expiries ?? (chain ? [chain.expiry] : [])}
+            selected={chain?.expiry ?? selected.expiry}
+            asOf={chain?.time ?? null}
+            onSelect={(expiry) => select({ expiry, contractId: null })}
+          />
           <ChainTable chain={chain} selectedId={contractId} onPick={onPick} />
         </section>
 
