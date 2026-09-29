@@ -2,6 +2,26 @@
 
 Status log for the build. Newest first.
 
+## 2026-09-29: v1.0.0 live
+
+| Resource | Name / URL | Status |
+|---|---|---|
+| Site | https://tickwire-fix.vercel.app | live, deploys on every push to `main` |
+| API | https://tickwire-api.fly.dev (Swagger at `/swagger`) | live, 1 machine in `ord`, always on |
+| FIX | `tickwire-api.fly.dev:9878` (dedicated IPv4 149.248.192.154) | live |
+| MySQL | Fly app `tickwire-db`, 1 GB volume, private network only | live |
+| Repo | https://github.com/danialtoor/tickwire | public, CI green, `main` protected |
+
+Verified in production:
+- `scripts/smoke.sh` (REST, guest provisioning, FIX logon/order/ack/cancel/logout over raw TCP, analyzer)
+- Playwright `@prod` at desktop and mobile sizes: 8/8
+- `fly machine restart`, then the same guest session resumed at seq 7/5 (was 5/3), not from 1
+- CI → Deploy workflow → production smoke, fully automated; nightly reset authenticates
+
+Cost: two shared-cpu-1x 512 MB machines, a 1 GB volume and a dedicated IPv4 (about $7–10/month).
+
+Human-only polish left: pin the repo on the GitHub profile, optional custom domain, optional Loom walkthrough.
+
 ## 2026-09-29: published; API deploy blocked on Fly billing
 
 | Resource | Name / URL | Status |
