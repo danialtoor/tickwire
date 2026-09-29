@@ -56,7 +56,7 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -83,7 +83,7 @@ jobs:
           python-version: '3.12'
       - name: Smoke (REST + raw TCP FIX)
         run: scripts/smoke.sh http://localhost:8080 localhost:9878
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
