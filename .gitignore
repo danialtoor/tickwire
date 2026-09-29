@@ -492,3 +492,7 @@ web/.vite/
 __pycache__/
 *.pyc
 .venv/
+
+# sample FIX logs are source, not build output
+!samples/*.log
+!web/public/samples/*.log

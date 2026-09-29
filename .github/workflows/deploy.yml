@@ -13,6 +13,7 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write # the reusable smoke workflow opens an issue when production fails
 
 jobs:
   api:

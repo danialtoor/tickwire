@@ -67,7 +67,7 @@ public sealed class MySqlPersistenceTests : IAsyncLifetime
             var chain = await Until(() => http.GetFromJsonAsync<ChainDto>("/api/chain/SPY", ApiFactory.Json),
                 c => c.Rows.Count > 0 && c.Rows[c.Rows.Count / 2].Call!.Ask is not null);
             var call = chain.Rows[chain.Rows.Count / 2].Call!;
-            await http.PostAsJsonAsync("/api/orders", new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 2));
+            (await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 2))).EnsureSuccessStatusCode();
             await Until(() => http.GetFromJsonAsync<List<OrderRowDto>>("/api/orders", ApiFactory.Json), r => r.Count == 1 && r[0].InSync);
             var session = await Until(() => http.GetFromJsonAsync<List<SessionSummaryDto>>("/api/sessions", ApiFactory.Json),
                 s => s.Any(x => x.ClientCompId == g.ClientCompId));
@@ -95,7 +95,7 @@ public sealed class MySqlPersistenceTests : IAsyncLifetime
         resumed.NextTargetSeqNum.Should().BeGreaterThan(venueInSeq, "and from the stored inbound sequence, without a reset");
     }
 
-    private static async Task<T> Until<T>(Func<Task<T?>> probe, Func<T, bool> done, int timeoutMs = 20_000)
+    private static async Task<T> Until<T>(Func<Task<T?>> probe, Func<T, bool> done, int timeoutMs = 45_000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (true)

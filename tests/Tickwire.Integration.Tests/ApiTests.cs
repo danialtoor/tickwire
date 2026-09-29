@@ -47,6 +47,22 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Tickwire:PublicFixHost", "127.0.0.1");
     }
 
+    /// <summary>Places an order, retrying while the guest's FIX session is still logging on (the API answers 503).</summary>
+    public static async Task<HttpResponseMessage> PlaceOrderAsync(HttpClient http, NewOrderBody body, int timeoutMs = 20_000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            var resp = await http.PostAsJsonAsync("/api/orders", body);
+            if (resp.StatusCode != HttpStatusCode.ServiceUnavailable || DateTime.UtcNow > deadline)
+            {
+                return resp;
+            }
+
+            await Task.Delay(200);
+        }
+    }
+
     public async Task<(HttpClient Http, GuestProvisioned Guest)> NewGuestAsync()
     {
         var http = CreateClient();
@@ -108,7 +124,7 @@ public sealed class ApiTests(ApiFactory factory)
         var (http, guest) = await factory.NewGuestAsync();
         var call = await AtmCallAsync(http);
 
-        var resp = await http.PostAsJsonAsync("/api/orders", new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 3));
+        var resp = await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 3));
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
 
         var rows = await Eventually(() => http.GetFromJsonAsync<List<OrderRowDto>>("/api/orders", ApiFactory.Json),
@@ -126,7 +142,7 @@ public sealed class ApiTests(ApiFactory factory)
         var (http, guest) = await factory.NewGuestAsync();
         var call = await AtmCallAsync(http);
 
-        await http.PostAsJsonAsync("/api/orders", new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 500));
+        await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 500));
 
         var traffic = await Eventually(() => http.GetFromJsonAsync<SessionTrafficDto>($"/api/sessions/{guest.ClientCompId}/messages",
                 ApiFactory.Json),
@@ -142,7 +158,7 @@ public sealed class ApiTests(ApiFactory factory)
         var call = await AtmCallAsync(http);
 
         (await http.PostAsJsonAsync($"/api/sessions/{guest.ClientCompId}/chaos", new ChaosBody("drop-venue", 2))).EnsureSuccessStatusCode();
-        await http.PostAsJsonAsync("/api/orders", new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 2));
+        await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 2));
 
         var traffic = await Eventually(() => http.GetFromJsonAsync<SessionTrafficDto>($"/api/sessions/{guest.ClientCompId}/messages",
                 ApiFactory.Json),
@@ -173,7 +189,7 @@ public sealed class ApiTests(ApiFactory factory)
 
         var limits = new LimitsBody(100, 50_000, 0.5m, 0.25m, 25, ["AAPL"], ["Limit", "Market"], ["Day", "ImmediateOrCancel", "FillOrKill"], 10, true);
         (await http.PutAsJsonAsync($"/api/clients/{guest.ClientId}/limits", limits)).EnsureSuccessStatusCode();
-        await http.PostAsJsonAsync("/api/orders", new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 1));
+        await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 1));
 
         await Eventually(() => http.GetFromJsonAsync<SessionTrafficDto>($"/api/sessions/{guest.ClientCompId}/messages", ApiFactory.Json),
             t => t.Messages.Any(m => m.Side == "client" && m.Raw.Contains("not enabled for this account", StringComparison.Ordinal)));
