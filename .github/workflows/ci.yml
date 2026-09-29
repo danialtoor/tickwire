@@ -129,18 +129,29 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: Build API
+        run: dotnet build src/Tickwire.Api -c Release
       - name: Start API (in-memory)
         shell: pwsh
         run: |
-          Start-Process dotnet -ArgumentList 'run','--project','src/Tickwire.Api','-c','Release','--no-launch-profile' `
-            -Environment @{ ASPNETCORE_URLS = 'http://localhost:8080'; Tickwire__AdminKey = 'ci' } -RedirectStandardOutput api.log
-          for ($i = 0; $i -lt 90; $i++) { try { Invoke-RestMethod http://localhost:8080/health; break } catch { Start-Sleep 2 } }
+          Start-Process dotnet -ArgumentList 'run','--project','src/Tickwire.Api','-c','Release','--no-build','--no-launch-profile' `
+            -Environment @{ ASPNETCORE_URLS = 'http://localhost:8080'; Tickwire__AdminKey = 'ci' } `
+            -RedirectStandardOutput api.log -RedirectStandardError api.err.log
+          for ($i = 0; $i -lt 120; $i++) {
+            try { Invoke-RestMethod http://localhost:8080/health; return } catch { Start-Sleep 2 }
+          }
+          Get-Content api.log, api.err.log -ErrorAction SilentlyContinue
+          throw 'API did not become healthy'
       - name: Pester
         shell: pwsh
         run: |
           Install-Module Pester -MinimumVersion 5.5 -Force -SkipPublisherCheck -Scope CurrentUser
           $r = Invoke-Pester tools/powershell -PassThru -Output Detailed
           if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
+      - name: API log
+        if: failure()
+        shell: pwsh
+        run: Get-Content api.log, api.err.log -Tail 200 -ErrorAction SilentlyContinue
 
   gitleaks:
     name: Secret scan
