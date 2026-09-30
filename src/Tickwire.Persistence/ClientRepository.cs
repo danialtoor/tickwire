@@ -14,9 +14,21 @@ public sealed record SessionConfig(
     int HeartBtInt,
     bool ResetOnLogon,
     string Transport,
-    bool EnableChaos)
+    bool EnableChaos,
+    string Role = SessionRoles.Trading)
 {
     public string Key => $"{BeginString}:{VenueCompId}->{ClientCompId}";
+
+    public bool IsDropCopy => Role == SessionRoles.DropCopy;
+}
+
+public static class SessionRoles
+{
+    /// <summary>Sends orders and receives their reports.</summary>
+    public const string Trading = "trading";
+
+    /// <summary>Receive-only: a copy of every ExecutionReport for the client's orders, whichever session sent them.</summary>
+    public const string DropCopy = "dropcopy";
 }
 
 public sealed record ClientRecord(
@@ -99,7 +111,8 @@ public static class LimitsMapping
     };
 
     public static SessionConfig ToDomain(FixSessionEntity s) =>
-        new(s.Id, s.ClientId, s.BeginString, s.ClientCompId, s.VenueCompId, s.HeartBtInt, s.ResetOnLogon, s.Transport, s.EnableChaos);
+        new(s.Id, s.ClientId, s.BeginString, s.ClientCompId, s.VenueCompId, s.HeartBtInt, s.ResetOnLogon, s.Transport, s.EnableChaos,
+            s.Role);
 
     public static ClientRecord ToDomain(ClientEntity c) => new(c.ClientId, c.DisplayName, c.IsGuest, c.KillSwitch, ToDomain(c.Limits),
         [.. c.Sessions.Select(ToDomain)], c.CreatedAt, c.ExpiresAt, c.OwnerTokenHash);
@@ -164,6 +177,7 @@ public sealed class EfClientRepository(IDbContextFactory<TickwireDbContext> fact
                     ResetOnLogon = s.ResetOnLogon,
                     Transport = s.Transport,
                     EnableChaos = s.EnableChaos,
+                    Role = s.Role,
                     CreatedAt = now,
                 }),
             ],
@@ -207,6 +221,7 @@ public sealed class EfClientRepository(IDbContextFactory<TickwireDbContext> fact
             ResetOnLogon = session.ResetOnLogon,
             Transport = session.Transport,
             EnableChaos = session.EnableChaos,
+            Role = session.Role,
             CreatedAt = time.GetUtcNow().UtcDateTime,
         };
         db.FixSessions.Add(entity);

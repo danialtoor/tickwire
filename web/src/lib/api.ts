@@ -1,4 +1,4 @@
-import type { ChaosResult, ConnectInfo, FeedSnapshot, FeedStatus, Guest, Me, OrderRow, Ops, PortfolioView, ProviderInfo, RiskLimits, SessionTraffic } from './types'
+import type { ChaosResult, ConnectInfo, FeedSnapshot, FeedStatus, Guest, Me, OrderRow, Ops, PortfolioView, ProviderInfo, RiskLimits, SessionRole, SessionTraffic } from './types'
 
 /**
  * In development everything is same-origin (Vite proxies /api and /hubs to the API). In production the browser talks
@@ -107,7 +107,8 @@ export const api = {
     request<RiskLimits>(`/api/clients/${clientId}/limits`, { method: 'PUT', token, body: JSON.stringify(limits) }),
   kill: (token: string, clientId: string, engaged: boolean) =>
     request<{ engaged: boolean; ordersCanceled: number }>(`/api/clients/${clientId}/kill`, { method: 'POST', token, body: JSON.stringify({ engaged }) }),
-  connect: (token: string) => request<ConnectInfo>('/api/connect', { method: 'POST', token }),
+  connect: (token: string, role: SessionRole = 'trading', version = 'FIX.4.4') =>
+    request<ConnectInfo>(`/api/connect?role=${role}&version=${encodeURIComponent(version)}`, { method: 'POST', token }),
   metrics: () => request<Ops>('/api/metrics'),
   providers: () => request<ProviderInfo[]>('/api/feeds/providers'),
   feed: (token: string) => request<FeedSnapshot>('/api/feeds', { token }),

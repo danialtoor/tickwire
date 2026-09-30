@@ -13,7 +13,7 @@ session behaves when things go wrong. Every example below is real output from th
 | FIX over WebSocket | `wss://tickwire-api.fly.dev/fix/ws` | `ws://localhost:8080/fix/ws` |
 | Protocol | FIX 4.4 (`8=FIX.4.4`) | |
 | TargetCompID (56) | `TICKWIRE` | |
-| SenderCompID (49) | issued at onboarding (`BYO-XXXXXX`) | |
+| SenderCompID (49) | issued at onboarding (`BYO-XXXXXX` trading, `DC-XXXXXX` drop copy) | |
 
 Credentials are provisioned on the **Connect via FIX** page, via `POST /api/connect`, or with `New-FixClient` in
 the PowerShell module. They are tied to a guest account and expire after 24 hours.
@@ -209,6 +209,17 @@ Reports: strategy-level ExecutionReports carry `442=3` (MultiLegReportingType) a
 is a separate ExecutionReport with `442=2`, the leg's instrument, side, `32` LastQty and `31` LastPx (CumQty and
 LeavesQty on leg reports are the strategy's). Cancel with OrderCancelRequest(F); replace isn't supported for spreads
 (OrderCancelReject, `58=Multi-leg orders can't be replaced`).
+
+### Drop copy sessions
+
+A drop copy session (`POST /api/connect?role=dropcopy`, or "Drop copy" on the Connect page) is receive-only. After
+Logon it gets a copy of every ExecutionReport for the account's orders, whichever session entered them (the browser
+trader, your own trading session, or both). Copies are byte-for-byte the same report with `CopyMsgIndicator(797)=Y`
+added and the drop copy's own header and sequence numbers. They are stored and resent like any other message, so a
+drop copy that reconnects with a gap gets what it missed through ResendRequest. OrderCancelRejects aren't copied.
+
+Any application message sent on a drop copy gets `BusinessMessageReject(j)` with `380=3` (unsupported message type)
+and a Text explaining why. Disconnecting a drop copy never triggers cancel-on-disconnect.
 
 ## 4. Pre-trade risk
 

@@ -92,12 +92,15 @@ function Get-FixSession {
 Onboards a new FIX client: creates an account, provisions CompIDs, and optionally writes a QuickFIX config.
 .EXAMPLE
 New-FixClient -ConfigPath ./quickfix.cfg
+.EXAMPLE
+New-FixClient -WithDropCopy    # also provisions a receive-only drop copy session (DropCopyCompID)
 #>
 function New-FixClient {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [string] $ConfigPath,
-        [ValidateSet('quickfixn.cfg', 'quickfixj.cfg')][string] $ConfigFlavor = 'quickfixn.cfg'
+        [ValidateSet('quickfixn.cfg', 'quickfixj.cfg')][string] $ConfigFlavor = 'quickfixn.cfg',
+        [switch] $WithDropCopy
     )
     if (-not $PSCmdlet.ShouldProcess($script:Tickwire.ApiUrl, 'Provision a FIX client')) { return }
     $guest = Invoke-TickwireApi -Method POST -Path '/api/guest'
@@ -105,6 +108,7 @@ function New-FixClient {
     try {
         $script:Tickwire.Token = $guest.token
         $connect = Invoke-TickwireApi -Method POST -Path '/api/connect'
+        $dropCopy = $WithDropCopy ? (Invoke-TickwireApi -Method POST -Path '/api/connect?role=dropcopy') : $null
     }
     finally {
         $script:Tickwire.Token = $saved
@@ -115,6 +119,7 @@ function New-FixClient {
         ClientId     = $connect.clientId
         SenderCompID = $connect.senderCompID
         TargetCompID = $connect.targetCompID
+        DropCopyCompID = $dropCopy?.senderCompID
         Host         = $connect.host
         Port         = $connect.port
         Token        = $guest.token

@@ -6,6 +6,8 @@
   unrealized P&L marked at mid, portfolio delta/gamma/vega/theta, cash settlement at intrinsic on expiry.
   New pre-trade delta and vega limits (orders that reduce exposure always pass). Positions tab in the Trader,
   `GET /api/positions`, and `-MaxAbsDelta`/`-MaxAbsVega` on `Set-RiskLimit`.
+- **Drop copy sessions**: receive-only FIX sessions (`DC-XXXXXX`) that get every ExecutionReport for the account with
+  `CopyMsgIndicator(797)=Y`; orders sent on them are rejected with 35=j. Choose "Drop copy" on the Connect page.
 
 ## 1.1.0 (2026-09-30)
 

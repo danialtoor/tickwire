@@ -93,6 +93,7 @@ public static class Tags
     public const int LegLastPx = 637;
     public const int NextExpectedMsgSeqNum = 789;
     public const int OrdStatusReqID = 790;
+    public const int CopyMsgIndicator = 797;
 
     /// <summary>Tickwire custom tag (user-defined range): theoretical value of the option at the time of the report.</summary>
     public const int TheoValue = 20001;

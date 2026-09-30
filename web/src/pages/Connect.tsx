@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/format'
 import { live } from '../lib/live'
-import type { ConnectInfo } from '../lib/types'
+import type { ConnectInfo, SessionRole } from '../lib/types'
 import { useGuest } from '../lib/useBackend'
 import { useStore } from '../state/store'
 
@@ -10,7 +10,10 @@ export default function Connect() {
   const mode = useStore((s) => s.mode)
   const ops = useStore((s) => s.ops)
   const { ensure } = useGuest()
-  const [info, setInfo] = useState<ConnectInfo | null>(null)
+  const [provisioned, setProvisioned] = useState<ConnectInfo[]>([])
+  const [selected, setSelected] = useState<string | null>(null)
+  const [role, setRole] = useState<SessionRole>('trading')
+  const [version, setVersion] = useState(VERSIONS[0].value)
   const [tab, setTab] = useState('quickfixn.cfg')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -25,7 +28,9 @@ export default function Connect() {
     setError(null)
     try {
       const guest = await ensure()
-      setInfo(await api.connect(guest.token))
+      const next = await api.connect(guest.token, role, version)
+      setProvisioned((all) => [...all.filter((i) => i.senderCompID !== next.senderCompID), next])
+      setSelected(next.senderCompID)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -33,6 +38,7 @@ export default function Connect() {
     }
   }
 
+  const info = provisioned.find((i) => i.senderCompID === selected) ?? null
   const session = info ? ops?.sessions.find((s) => s.clientCompId === info.senderCompID) : undefined
   const text = info?.configs[tab] ?? ''
 
@@ -56,26 +62,63 @@ export default function Connect() {
         </p>
       </header>
 
-      {!info && (
-        <div className="panel flex flex-wrap items-center justify-between gap-4 p-5">
+      <div className="panel flex flex-wrap items-center justify-between gap-4 p-5">
+        <div className="space-y-3">
           <div>
             <div className="font-medium">Provision FIX credentials</div>
             <div className="text-sm text-muted">Tied to your guest account and its limits; they expire with it after 24 hours.</div>
           </div>
-          <button
-            type="button"
-            onClick={provision}
-            disabled={busy || mode !== 'live'}
-            className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-ink disabled:opacity-50"
-          >
-            {busy ? 'Provisioning…' : mode === 'live' ? 'Provision credentials' : 'Needs the live backend'}
-          </button>
-          {error && <p className="w-full text-sm text-sell">{error}</p>}
+          <div className="flex flex-wrap gap-4">
+            <Segmented
+              label="Session"
+              value={role}
+              onChange={(v) => setRole(v as SessionRole)}
+              options={[
+                { value: 'trading', label: 'Trading', hint: 'Send orders and get their reports' },
+                { value: 'dropcopy', label: 'Drop copy', hint: 'Receive-only copy of every ExecutionReport (797=Y)' },
+              ]}
+            />
+            <Segmented label="Version" value={version} onChange={setVersion} options={VERSIONS} />
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={provision}
+          disabled={busy || mode !== 'live'}
+          className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-ink disabled:opacity-50"
+        >
+          {busy ? 'Provisioning…' : mode === 'live' ? 'Provision credentials' : 'Needs the live backend'}
+        </button>
+        {error && <p className="w-full text-sm text-sell">{error}</p>}
+      </div>
+
+      {provisioned.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {provisioned.map((p) => (
+            <button
+              key={p.senderCompID}
+              type="button"
+              onClick={() => setSelected(p.senderCompID)}
+              className={cn(
+                'num rounded-lg border px-3 py-1.5 text-xs',
+                p.senderCompID === selected ? 'border-accent text-ink' : 'border-line text-muted hover:text-ink-2',
+              )}
+            >
+              {p.senderCompID} · {p.role === 'dropcopy' ? 'drop copy' : 'trading'} · {p.beginString}
+            </button>
+          ))}
         </div>
       )}
 
       {info && (
         <>
+          {info.role === 'dropcopy' && (
+            <p className="rounded-lg border border-accent/30 bg-accent/5 px-4 py-3 text-sm text-ink-2">
+              Drop copy: log on and listen. Every ExecutionReport for your account&apos;s orders (from the browser trader or your trading
+              session) arrives here too, flagged <code className="num">CopyMsgIndicator(797)=Y</code>. Orders sent on this session get a
+              BusinessMessageReject.
+            </p>
+          )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Fact label="SenderCompID (49)" value={info.senderCompID} />
             <Fact label="TargetCompID (56)" value={info.targetCompID} />
@@ -132,6 +175,41 @@ export default function Connect() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+const VERSIONS = [{ value: 'FIX.4.4', label: 'FIX 4.4' }]
+
+function Segmented({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string; hint?: string }[]
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex items-center gap-2">
+      <span className="text-[11px] text-muted">{label}</span>
+      <div className="flex rounded-lg bg-bg p-0.5">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={o.value === value}
+            title={o.hint}
+            onClick={() => onChange(o.value)}
+            className={cn('rounded-md px-2.5 py-1 text-xs', o.value === value ? 'bg-panel-2 text-ink' : 'text-muted hover:text-ink-2')}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

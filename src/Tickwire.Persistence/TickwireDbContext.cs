@@ -65,6 +65,10 @@ public sealed class FixSessionEntity
     public required string Transport { get; set; }
 
     public bool EnableChaos { get; set; }
+
+    /// <summary>trading or dropcopy (receive-only copies of the client's ExecutionReports).</summary>
+    public string Role { get; set; } = "trading";
+
     public DateTime CreatedAt { get; set; }
 }
 
@@ -187,6 +191,7 @@ public sealed class TickwireDbContext(DbContextOptions<TickwireDbContext> option
             e.Property(x => x.ClientCompId).HasMaxLength(64);
             e.Property(x => x.VenueCompId).HasMaxLength(64);
             e.Property(x => x.Transport).HasMaxLength(16);
+            e.Property(x => x.Role).HasMaxLength(16).HasDefaultValue("trading");
             e.HasIndex(x => new { x.BeginString, x.ClientCompId, x.VenueCompId }).IsUnique();
         });
 

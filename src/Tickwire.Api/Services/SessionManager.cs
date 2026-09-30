@@ -111,7 +111,15 @@ public sealed class SessionManager : ISessionResolver, IAsyncDisposable
                 Role = SessionRole.Acceptor,
                 HeartBtInt = config.HeartBtInt,
             }, store, _gateway, _time, _loggers.CreateLogger("Tickwire.Session"), _tap.Observer(config.Key, "venue", isVenueSide: true));
-            _gateway.Register(account, session);
+            if (config.IsDropCopy)
+            {
+                _gateway.RegisterDropCopy(account, session);
+            }
+            else
+            {
+                _gateway.Register(account, session);
+            }
+
             await session.StartAsync().ConfigureAwait(false);
             var managed = new ManagedSession(config.Key, session, account, config);
             _sessions[config.Key] = managed;
@@ -178,18 +186,25 @@ public sealed class SessionManager : ISessionResolver, IAsyncDisposable
         }
     }
 
-    /// <summary>Adds a TCP session to a client so they can connect their own FIX engine.</summary>
-    public async Task<SessionConfig> ProvisionExternalSessionAsync(string clientId, CancellationToken ct = default)
+    public static readonly IReadOnlyList<string> SupportedBeginStrings = ["FIX.4.4"];
+
+    /// <summary>
+    /// Adds a TCP session to a client so they can connect their own FIX engine: a trading session (BYO-xxxxxx) or a
+    /// receive-only drop copy (DC-xxxxxx). One of each per role and FIX version; asking again returns the same one.
+    /// </summary>
+    public async Task<SessionConfig> ProvisionExternalSessionAsync(string clientId, string role = SessionRoles.Trading,
+        string beginString = "FIX.4.4", CancellationToken ct = default)
     {
         var client = await _repo.GetAsync(clientId, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException(clientId);
-        var existing = client.Sessions.FirstOrDefault(s => s.Transport == "tcp");
+        var existing = client.Sessions.FirstOrDefault(s => s.Transport == "tcp" && s.Role == role && s.BeginString == beginString);
         if (existing is not null)
         {
             return existing;
         }
 
-        var config = await _repo.AddSessionAsync(new SessionConfig(0, clientId, "FIX.4.4", $"BYO-{RandomCode(6)}", _options.VenueCompId, 30,
-            true, "tcp", false), ct).ConfigureAwait(false);
+        var prefix = role == SessionRoles.DropCopy ? "DC" : "BYO";
+        var config = await _repo.AddSessionAsync(new SessionConfig(0, clientId, beginString, $"{prefix}-{RandomCode(6)}", _options.VenueCompId,
+            30, true, "tcp", false, role), ct).ConfigureAwait(false);
         await _repo.AuditAsync(clientId, "session.provisioned", clientId, config.Key, ct).ConfigureAwait(false);
         return config;
     }

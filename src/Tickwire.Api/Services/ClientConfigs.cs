@@ -66,6 +66,15 @@ public static class ClientConfigs
             # Then a limit order for 1 SPY call (use a strike/expiry from GET /api/chain/SPY):
             35=D|11=my-order-1|55=SPY|167=OPT|201=1|202=<strike>|541=<yyyymmdd>|54=1|60=<UTC now>|38=1|40=2|44=<price>|59=0
             """;
+        if (s.IsDropCopy)
+        {
+            raw = $"""
+                # Drop copy session: log on as below, then just listen. Every ExecutionReport for {clientId}'s orders
+                # arrives here too, with CopyMsgIndicator(797)=Y. Orders sent on this session are rejected (35=j).
+                8={s.BeginString}|9=..|35=A|49={s.ClientCompId}|56={s.VenueCompId}|34=1|52=<UTC now>|98=0|108={s.HeartBtInt}|141=Y|10=..|
+                """;
+        }
+
         return new ConnectInfo(clientId, s.ClientCompId, s.VenueCompId, host, port, s.HeartBtInt,
             new Dictionary<string, string>
             {
@@ -73,6 +82,10 @@ public static class ClientConfigs
                 ["quickfixj.cfg"] = quickfixj,
                 ["python.sh"] = python,
                 ["raw-fix.txt"] = raw,
-            });
+            })
+        {
+            Role = s.Role,
+            BeginString = s.BeginString,
+        };
     }
 }

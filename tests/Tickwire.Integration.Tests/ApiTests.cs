@@ -45,6 +45,7 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Tickwire:FixPort", FixPort.ToString(System.Globalization.CultureInfo.InvariantCulture));
         builder.UseSetting("Tickwire:AdminKey", "test-admin");
         builder.UseSetting("Tickwire:PublicFixHost", "127.0.0.1");
+        builder.UseSetting("Tickwire:GuestsPerMinute", "500");
     }
 
     /// <summary>Places an order, retrying while the guest's FIX session is still logging on (the API answers 503).</summary>

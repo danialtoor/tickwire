@@ -20,6 +20,7 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
     private readonly MarketDataCache _marketData;
     private readonly EngineMetrics _metrics;
     private readonly ConcurrentDictionary<string, FixSession> _sessions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<FixSession, byte>> _dropCopies = new(StringComparer.Ordinal);
 
     public FixOrderGateway(OrderManager oms, InstrumentRegistry instruments, MarketDataCache marketData, EngineMetrics metrics)
     {
@@ -36,7 +37,21 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
         _sessions[client.ClientId] = session;
     }
 
-    public void Unregister(string clientId) => _sessions.TryRemove(clientId, out _);
+    /// <summary>
+    /// Links a receive-only drop copy session: it gets a copy (CopyMsgIndicator(797)=Y) of every ExecutionReport for
+    /// the client's orders, whichever session entered them. Several drop copies per client are fine.
+    /// </summary>
+    public void RegisterDropCopy(ClientAccount client, FixSession session)
+    {
+        session.Tag = new DropCopyLink(client);
+        _dropCopies.GetOrAdd(client.ClientId, _ => new()).TryAdd(session, 0);
+    }
+
+    public void Unregister(string clientId)
+    {
+        _sessions.TryRemove(clientId, out _);
+        _dropCopies.TryRemove(clientId, out _);
+    }
 
     public void OnLogon(FixSession session)
     {
@@ -48,6 +63,7 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
 
     public void OnLogout(FixSession session)
     {
+        // A drop copy going away never cancels anything: it can't have entered orders.
         if (session.Tag is ClientAccount { Limits.CancelOnDisconnect: true } client)
         {
             _ = _oms.CancelAllAsync(client.ClientId, "Canceled on disconnect");
@@ -57,6 +73,13 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
     public ValueTask OnMessageAsync(FixSession session, FixMessage message, CancellationToken cancellationToken)
     {
         var received = Stopwatch.GetTimestamp();
+        if (session.Tag is DropCopyLink)
+        {
+            BusinessReject(session, message, BusinessRejectReason.UnsupportedMessageType,
+                "This is a drop copy session: it only receives ExecutionReports. Send orders on your trading session");
+            return ValueTask.CompletedTask;
+        }
+
         if (session.Tag is not ClientAccount client)
         {
             BusinessReject(session, message, BusinessRejectReason.ApplicationNotAvailable, "Session is not linked to a client account");
@@ -298,11 +321,27 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
 
     public void OnExecutionReport(ExecutionReportEvent report)
     {
-        if (!_sessions.TryGetValue(report.Order.ClientId, out var session))
+        if (_sessions.TryGetValue(report.Order.ClientId, out var session))
         {
-            return;
+            SendExecutionReport(session, report, copy: false);
         }
 
+        if (_dropCopies.TryGetValue(report.Order.ClientId, out var copies))
+        {
+            foreach (var copy in copies.Keys)
+            {
+                SendExecutionReport(copy, report, copy: true);
+            }
+        }
+
+        if (report.ReceivedTimestamp is { } received && report.ExecType is ExecType.New or ExecType.Rejected)
+        {
+            _metrics.OrderToAck.RecordSince(received);
+        }
+    }
+
+    private void SendExecutionReport(FixSession session, ExecutionReportEvent report, bool copy)
+    {
         var o = report.Order;
         var er = new FixMessageBuilder(MsgTypes.ExecutionReport, 512);
         er.Set(Tags.OrderID, o.OrderId)
@@ -314,6 +353,11 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
         if (report.RejectReason is { } rej && report.ExecType == ExecType.Rejected)
         {
             er.Set(Tags.OrdRejReason, (int)rej);
+        }
+
+        if (copy)
+        {
+            er.Set(Tags.CopyMsgIndicator, true);
         }
 
         er.Set(Tags.Account, o.Account);
@@ -374,11 +418,6 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
         }
 
         session.Send(er);
-
-        if (report.ReceivedTimestamp is { } received && report.ExecType is ExecType.New or ExecType.Rejected)
-        {
-            _metrics.OrderToAck.RecordSince(received);
-        }
     }
 
     public void OnCancelReject(CancelRejectEvent reject)
@@ -445,3 +484,6 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
         session.Send(b);
     }
 }
+
+/// <summary><see cref="FixSession.Tag"/> of a drop copy session.</summary>
+public sealed record DropCopyLink(ClientAccount Client);

@@ -252,7 +252,11 @@ export interface ConnectInfo {
   port: number
   heartBtInt: number
   configs: Record<string, string>
+  role: SessionRole
+  beginString: string
 }
+
+export type SessionRole = 'trading' | 'dropcopy'
 
 export interface ChaosResult {
   action: string

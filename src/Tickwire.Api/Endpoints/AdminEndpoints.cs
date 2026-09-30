@@ -32,7 +32,11 @@ public sealed record DecodeResult(bool Parsed, string? Error, string? MsgType, s
     IReadOnlyList<DecodedField> Fields, ValidationIssue? Validation);
 
 public sealed record ConnectInfo(string ClientId, string SenderCompID, string TargetCompID, string Host, int Port, int HeartBtInt,
-    IReadOnlyDictionary<string, string> Configs);
+    IReadOnlyDictionary<string, string> Configs)
+{
+    public string Role { get; init; } = SessionRoles.Trading;
+    public string BeginString { get; init; } = "FIX.4.4";
+}
 
 public static class AdminEndpoints
 {
@@ -144,7 +148,7 @@ public static class AdminEndpoints
         var connect = app.MapGroup("/api/connect").WithTags("Onboarding");
 
         connect.MapPost("/", async (HttpContext http, SessionManager sessions, IClientRepository repo, IOptions<TickwireOptions> options,
-                CancellationToken ct) =>
+                string? role, string? version, CancellationToken ct) =>
             {
                 var caller = await Auth.CallerAsync(http);
                 if (caller.ClientId is null)
@@ -152,13 +156,24 @@ public static class AdminEndpoints
                     return Auth.Unauthorized();
                 }
 
-                var config = await sessions.ProvisionExternalSessionAsync(caller.ClientId, ct);
+                role ??= SessionRoles.Trading;
+                version ??= "FIX.4.4";
+                if (role is not (SessionRoles.Trading or SessionRoles.DropCopy) || !SessionManager.SupportedBeginStrings.Contains(version))
+                {
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["query"] = [$"role must be trading or dropcopy; version one of {string.Join(", ", SessionManager.SupportedBeginStrings)}"],
+                    });
+                }
+
+                var config = await sessions.ProvisionExternalSessionAsync(caller.ClientId, role, version, ct);
                 var client = await repo.GetAsync(caller.ClientId, ct);
                 await sessions.GetOrCreateAsync(client!, config, ct);
                 return Results.Ok(ClientConfigs.Build(caller.ClientId, config, options.Value));
             })
             .RequireRateLimiting("guest")
-            .WithSummary("Provisions SenderCompID/TargetCompID for your own FIX engine and returns ready-to-use configs");
+            .WithSummary("Provisions SenderCompID/TargetCompID for your own FIX engine and returns ready-to-use configs. "
+                + "?role=dropcopy gives a receive-only session with a copy of every ExecutionReport; ?version=FIXT.1.1 speaks FIX 5.0 SP2");
 
         var fix = app.MapGroup("/api/fix").WithTags("FIX tools");
 
