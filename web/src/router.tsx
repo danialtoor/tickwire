@@ -8,6 +8,7 @@ const Trader = lazy(() => import('./pages/Trader'))
 const Connect = lazy(() => import('./pages/Connect'))
 const Analyzer = lazy(() => import('./pages/Analyzer'))
 const OpsPage = lazy(() => import('./pages/Ops'))
+const MarketData = lazy(() => import('./pages/MarketData'))
 
 const page = (node: ReactNode) => (
   <Suspense fallback={<div className="p-8 text-sm text-muted">Loading…</div>}>{node}</Suspense>
@@ -22,6 +23,7 @@ export const router = createBrowserRouter([
       { path: 'connect', element: page(<Connect />) },
       { path: 'analyzer', element: page(<Analyzer />) },
       { path: 'ops', element: page(<OpsPage />) },
+      { path: 'data', element: page(<MarketData />) },
       { path: '*', element: <Landing /> },
     ],
   },

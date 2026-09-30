@@ -8,6 +8,7 @@ import { useStore } from '../state/store'
 const links = [
   { to: '/trade', label: 'Trader' },
   { to: '/connect', label: 'Connect via FIX' },
+  { to: '/data', label: 'Market data' },
   { to: '/analyzer', label: 'Log Analyzer' },
   { to: '/ops', label: 'Ops' },
 ]

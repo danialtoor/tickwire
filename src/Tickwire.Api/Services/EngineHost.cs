@@ -87,7 +87,8 @@ public sealed partial class EngineHost(
 }
 
 /// <summary>Hourly: removes expired guests, their sessions, orders and stored messages.</summary>
-public sealed partial class Housekeeping(IClientRepository repo, SessionManager sessions, TimeProvider time, ILogger<Housekeeping> logger)
+public sealed partial class Housekeeping(IClientRepository repo, SessionManager sessions, FeedManager feeds, TimeProvider time,
+    ILogger<Housekeeping> logger)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -112,6 +113,7 @@ public sealed partial class Housekeeping(IClientRepository repo, SessionManager 
         var removed = await repo.PurgeExpiredGuestsAsync(asOf ?? time.GetUtcNow().UtcDateTime, ct).ConfigureAwait(false);
         foreach (var client in removed)
         {
+            await feeds.DisconnectAsync(client.ClientId).ConfigureAwait(false);
             await sessions.RemoveClientAsync(client).ConfigureAwait(false);
         }
 

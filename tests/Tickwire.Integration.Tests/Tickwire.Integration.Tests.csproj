@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tickwire.Api\Tickwire.Api.csproj" />
+    <ProjectReference Include="..\..\src\Tickwire.MarketData\Tickwire.MarketData.csproj" />
   </ItemGroup>
 
   <ItemGroup>

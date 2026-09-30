@@ -5,6 +5,7 @@
     <ProjectReference Include="..\Tickwire.LogAnalyzer\Tickwire.LogAnalyzer.csproj" />
     <ProjectReference Include="..\Tickwire.Fix.Session\Tickwire.Fix.Session.csproj" />
     <ProjectReference Include="..\Tickwire.Engine\Tickwire.Engine.csproj" />
+    <ProjectReference Include="..\Tickwire.MarketData\Tickwire.MarketData.csproj" />
   </ItemGroup>
 
   <ItemGroup>

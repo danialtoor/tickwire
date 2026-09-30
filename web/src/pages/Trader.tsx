@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router'
 import { Blotter } from '../components/Blotter'
 import { BookLadder } from '../components/BookLadder'
 import { ChainTable, type Pick } from '../components/ChainTable'
@@ -31,6 +32,9 @@ export default function Trader() {
   const tape = useStore((s) => s.tape)
   const spot = useStore((s) => s.spotHistory[s.selected.underlying] ?? NO_POINTS)
   const storeOrders = useStore((s) => s.orders)
+  const feed = useStore((s) => s.feed)
+  const liveQuotes = useStore((s) => s.liveQuotes)
+  const liveUnderlyings = useStore((s) => s.liveUnderlyings)
   const setOrders = useStore((s) => s.setOrders)
   const queryClient = useQueryClient()
 
@@ -58,6 +62,7 @@ export default function Trader() {
         if (cancelled) return
         await live.start()
         await Promise.all([live.client(g.token), live.ops(), live.chain(useStore.getState().selected.underlying, useStore.getState().selected.expiry)])
+        useStore.getState().applyFeed(await api.feed(g.token), true)
         const traffic = await api.traffic(g.token, g.clientCompId, 400)
         useStore.getState().addWire(traffic.messages)
         useStore.getState().addLogs(traffic.logs)
@@ -197,7 +202,31 @@ export default function Trader() {
             asOf={chain?.time ?? null}
             onSelect={(expiry) => select({ expiry, contractId: null })}
           />
-          <ChainTable chain={chain} selectedId={contractId} onPick={onPick} />
+          {feed && feed.state !== 'Idle' ? (
+            <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-1.5 text-[11.5px]">
+              <span className="text-muted">Your feed</span>
+              <span className="font-medium text-accent">{feed.providerName}</span>
+              <span className={feed.state === 'Streaming' ? 'text-buy' : feed.state === 'Error' ? 'text-sell' : 'text-warn'}>{feed.state}</span>
+              {liveUnderlyings[selected.underlying] && (
+                <span className="num text-ink-2">
+                  {selected.underlying} {px(liveUnderlyings[selected.underlying].price)} (sim {px(chain?.spot)})
+                </span>
+              )}
+              <span className="truncate text-muted">{feed.message}</span>
+              <Link to="/data" className="ml-auto text-muted underline decoration-line-strong underline-offset-2 hover:text-ink">
+                Manage
+              </Link>
+            </div>
+          ) : (
+            <div className="border-b border-line px-3 py-1.5 text-[11.5px] text-muted">
+              Simulated market.{' '}
+              <Link to="/data" className="underline decoration-line-strong underline-offset-2 hover:text-ink">
+                Connect a live options feed
+              </Link>{' '}
+              (SpiderRock, Databento, Polygon.io, Tradier, Alpaca) to see real quotes alongside.
+            </div>
+          )}
+          <ChainTable chain={chain} selectedId={contractId} onPick={onPick} live={feed && feed.state !== 'Idle' ? liveQuotes : undefined} />
         </section>
 
         <aside className="grid content-start gap-3 md:grid-cols-2 xl:grid-cols-1">

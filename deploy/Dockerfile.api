@@ -12,6 +12,7 @@ COPY src/Tickwire.Venue/Tickwire.Venue.csproj src/Tickwire.Venue/
 COPY src/Tickwire.Engine/Tickwire.Engine.csproj src/Tickwire.Engine/
 COPY src/Tickwire.Persistence/Tickwire.Persistence.csproj src/Tickwire.Persistence/
 COPY src/Tickwire.LogAnalyzer/Tickwire.LogAnalyzer.csproj src/Tickwire.LogAnalyzer/
+COPY src/Tickwire.MarketData/Tickwire.MarketData.csproj src/Tickwire.MarketData/
 COPY src/Tickwire.Api/Tickwire.Api.csproj src/Tickwire.Api/
 RUN dotnet restore src/Tickwire.Api/Tickwire.Api.csproj
 

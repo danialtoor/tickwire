@@ -1,7 +1,7 @@
 import { HubConnectionBuilder, HubConnectionState, LogLevel, type HubConnection } from '@microsoft/signalr'
 import { useStore } from '../state/store'
 import { hubBase } from './api'
-import type { Book, Chain, Ops, SessionLog, TradePrint, Underlying, WireEvent } from './types'
+import type { Book, Chain, FeedSnapshot, FeedStatus, Ops, SessionLog, TradePrint, Underlying, WireEvent } from './types'
 
 type Listener = () => void
 
@@ -44,6 +44,8 @@ class LiveConnection {
     conn.on('order', () => this.orderListeners.forEach((l) => l()))
     conn.on('cancelReject', () => this.orderListeners.forEach((l) => l()))
     conn.on('ops', (o: Ops) => store().setOps(o))
+    conn.on('feedQuotes', (f: FeedSnapshot) => store().applyFeed(f))
+    conn.on('feedStatus', (f: FeedStatus) => store().setFeedStatus(f))
     conn.onreconnected(() => {
       this.state.connected = true
       void this.resubscribe()

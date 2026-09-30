@@ -48,6 +48,7 @@ public sealed class LiveHub(SessionManager sessions, MarketView market, BookSubs
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, $"orders:{clientId}");
+        await Groups.AddToGroupAsync(Context.ConnectionId, FeedManager.Group(clientId));
         var account = await sessions.LoadAccountAsync(clientId, Context.ConnectionAborted);
         foreach (var s in sessions.Sessions.Where(s => s.Account.ClientId == clientId))
         {

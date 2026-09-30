@@ -248,3 +248,61 @@ export interface ChaosResult {
   action: string
   description: string
 }
+
+export interface CredentialField {
+  name: string
+  label: string
+  secret: boolean
+  placeholder: string | null
+  defaultValue: string | null
+}
+
+export interface ProviderInfo {
+  id: string
+  name: string
+  tagline: string
+  transport: string
+  docsUrl: string
+  signupUrl: string
+  credentials: CredentialField[]
+  provides: string[]
+  brandColor: string
+  verified: boolean
+}
+
+export interface ExternalQuote {
+  occSymbol: string
+  bid: number | null
+  ask: number | null
+  bidSize: number | null
+  askSize: number | null
+  last: number | null
+  impliedVol: number | null
+  delta: number | null
+  time: string
+  provider: string
+}
+
+export interface ExternalUnderlying {
+  symbol: string
+  price: number
+  time: string
+  provider: string
+}
+
+export interface FeedStatus {
+  provider: string | null
+  providerName: string | null
+  state: 'Idle' | 'Connecting' | 'Streaming' | 'Error' | 'Stopped'
+  message: string | null
+  startedAt: string | null
+  updates: number
+  contracts: number
+  lastUpdate: string | null
+}
+
+export interface FeedSnapshot {
+  status: FeedStatus
+  quotes: ExternalQuote[]
+  underlyings: ExternalUnderlying[]
+}

@@ -9,6 +9,7 @@
     <Project Path="src/Tickwire.Fix.Session/Tickwire.Fix.Session.csproj" />
     <Project Path="src/Tickwire.Fix/Tickwire.Fix.csproj" />
     <Project Path="src/Tickwire.LogAnalyzer/Tickwire.LogAnalyzer.csproj" />
+    <Project Path="src/Tickwire.MarketData/Tickwire.MarketData.csproj" />
     <Project Path="src/Tickwire.Persistence/Tickwire.Persistence.csproj" />
     <Project Path="src/Tickwire.Pricing/Tickwire.Pricing.csproj" />
     <Project Path="src/Tickwire.Venue/Tickwire.Venue.csproj" />
@@ -18,6 +19,7 @@
     <Project Path="tests/Tickwire.Fix.Tests/Tickwire.Fix.Tests.csproj" />
     <Project Path="tests/Tickwire.Integration.Tests/Tickwire.Integration.Tests.csproj" />
     <Project Path="tests/Tickwire.LogAnalyzer.Tests/Tickwire.LogAnalyzer.Tests.csproj" />
+    <Project Path="tests/Tickwire.MarketData.Tests/Tickwire.MarketData.Tests.csproj" />
     <Project Path="tests/Tickwire.Session.Tests/Tickwire.Session.Tests.csproj" />
   </Folder>
 </Solution>

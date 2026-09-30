@@ -10,6 +10,8 @@ using Tickwire.Api.Hubs;
 using Tickwire.Api.Services;
 using Tickwire.Engine;
 using Tickwire.Fix.Session.Store;
+using Tickwire.MarketData;
+using Tickwire.MarketData.Providers;
 using Tickwire.Persistence;
 using Tickwire.Venue;
 
@@ -78,6 +80,23 @@ services.AddSingleton<BookSubscriptions>();
 services.AddSingleton<OpsSnapshotter>();
 services.AddSingleton<LiveOrderPublisher>();
 services.AddSingleton<Housekeeping>();
+
+// ---- external options market data (each visitor connects their own account)
+services.AddHttpClient();
+services.AddSingleton<IOptionFeedProvider, SpiderRockProvider>();
+services.AddSingleton<IOptionFeedProvider, DatabentoProvider>();
+services.AddSingleton<IOptionFeedProvider, PolygonProvider>();
+services.AddSingleton<IOptionFeedProvider>(sp => new TradierProvider(sp.GetRequiredService<IHttpClientFactory>().CreateClient("tradier")));
+services.AddSingleton<IOptionFeedProvider, AlpacaProvider>();
+services.AddSingleton<IOptionFeedProvider>(sp =>
+{
+    var instruments = sp.GetRequiredService<InstrumentRegistry>();
+    var cache = sp.GetRequiredService<MarketDataCache>();
+    return new DemoProvider(occ => instruments.Find(occ) is { } c && cache.Quote(c.Id) is { } q
+        ? ((decimal)q.Theo, q.ImpliedVol, q.Delta)
+        : null);
+});
+services.AddSingleton<FeedManager>();
 services.AddHostedService<EngineHost>();
 services.AddHostedService<LivePublisher>();
 services.AddHostedService(sp => sp.GetRequiredService<Housekeeping>());
@@ -161,6 +180,7 @@ app.MapTradingEndpoints();
 app.MapSessionEndpoints();
 app.MapAdminEndpoints();
 app.MapAnalyzerEndpoints();
+app.MapFeedEndpoints();
 
 // FIX over WebSocket: same acceptor, same sessions, same validation as TCP.
 app.Map("/fix/ws", async (HttpContext http, SessionManager sessions) =>

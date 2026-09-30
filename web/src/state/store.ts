@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Book, Chain, Guest, OrderRow, Ops, SessionLog, TradePrint, Underlying, WireEvent } from '../lib/types'
+import type { Book, Chain, ExternalQuote, ExternalUnderlying, FeedSnapshot, FeedStatus, Guest, OrderRow, Ops, SessionLog, TradePrint, Underlying, WireEvent } from '../lib/types'
 
 export type Mode = 'checking' | 'live' | 'replay'
 
@@ -26,6 +26,9 @@ interface State {
   logs: SessionLog[]
   ops: Ops | null
   selected: { underlying: string; expiry: string | null; contractId: number | null }
+  feed: FeedStatus | null
+  liveQuotes: Record<string, ExternalQuote>
+  liveUnderlyings: Record<string, ExternalUnderlying>
 
   setMode: (mode: Mode) => void
   setGuest: (guest: Guest | null) => void
@@ -39,6 +42,8 @@ interface State {
   setOps: (ops: Ops) => void
   select: (patch: Partial<State['selected']>) => void
   resetSession: () => void
+  applyFeed: (snapshot: FeedSnapshot, replace?: boolean) => void
+  setFeedStatus: (status: FeedStatus) => void
 }
 
 export const useStore = create<State>((set) => ({
@@ -54,6 +59,9 @@ export const useStore = create<State>((set) => ({
   logs: [],
   ops: null,
   selected: { underlying: 'SPY', expiry: null, contractId: null },
+  feed: null,
+  liveQuotes: {},
+  liveUnderlyings: {},
 
   setMode: (mode) => set({ mode }),
   setGuest: (guest) => set({ guest }),
@@ -89,5 +97,14 @@ export const useStore = create<State>((set) => ({
     }),
   setOps: (ops) => set({ ops }),
   select: (patch) => set((s) => ({ selected: { ...s.selected, ...patch } })),
-  resetSession: () => set({ orders: [], wire: [], logs: [] }),
+  resetSession: () => set({ orders: [], wire: [], logs: [], feed: null, liveQuotes: {}, liveUnderlyings: {} }),
+  applyFeed: (snapshot, replace = false) =>
+    set((s) => {
+      const liveQuotes = replace ? {} : { ...s.liveQuotes }
+      for (const q of snapshot.quotes) liveQuotes[q.occSymbol] = q
+      const liveUnderlyings = { ...(replace ? {} : s.liveUnderlyings) }
+      for (const u of snapshot.underlyings) liveUnderlyings[u.symbol] = u
+      return { feed: snapshot.status, liveQuotes, liveUnderlyings }
+    }),
+  setFeedStatus: (status) => set(status.state === 'Idle' ? { feed: status, liveQuotes: {}, liveUnderlyings: {} } : { feed: status }),
 }))
