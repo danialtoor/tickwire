@@ -65,6 +65,12 @@ public interface IClientRepository
     /// <summary>Deletes guests whose TTL has passed. Returns the removed clients so callers can tear down sessions.</summary>
     Task<IReadOnlyList<ClientRecord>> PurgeExpiredGuestsAsync(DateTime now, CancellationToken ct = default);
 
+    /// <summary>
+    /// Retention for data that outlives any one client: wire-archive messages (not the resend store) older than
+    /// <paramref name="archiveBefore"/> and audit entries older than <paramref name="auditBefore"/>. Returns rows deleted.
+    /// </summary>
+    Task<int> PruneAsync(DateTime archiveBefore, DateTime auditBefore, CancellationToken ct = default);
+
     Task AuditAsync(string actor, string action, string? clientId, string? details, CancellationToken ct = default);
 
     Task<IReadOnlyList<AuditRecord>> RecentAuditAsync(int max, CancellationToken ct = default);
@@ -241,7 +247,11 @@ public sealed class EfClientRepository(IDbContextFactory<TickwireDbContext> fact
 
         var ids = expired.Select(c => c.ClientId).ToList();
         var keys = expired.SelectMany(c => c.Sessions).Select(s => $"{s.BeginString}:{s.VenueCompId}->{s.ClientCompId}").ToList();
-        await db.SessionMessages.Where(m => keys.Contains(m.SessionKey)).ExecuteDeleteAsync(ct);
+        foreach (var key in keys)
+        {
+            await DeleteInBatchesAsync(db, "DELETE FROM session_messages WHERE SessionKey = {0} LIMIT 5000", key, ct);
+        }
+
         await db.SessionStates.Where(s => keys.Contains(s.SessionKey)).ExecuteDeleteAsync(ct);
         await db.Executions.Where(e => ids.Contains(e.ClientId)).ExecuteDeleteAsync(ct);
         await db.Orders.Where(o => ids.Contains(o.ClientId)).ExecuteDeleteAsync(ct);
@@ -249,6 +259,33 @@ public sealed class EfClientRepository(IDbContextFactory<TickwireDbContext> fact
         db.Clients.RemoveRange(expired);
         await db.SaveChangesAsync(ct);
         return records;
+    }
+
+    public async Task<int> PruneAsync(DateTime archiveBefore, DateTime auditBefore, CancellationToken ct = default)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var deleted = await DeleteInBatchesAsync(db, "DELETE FROM session_messages WHERE IsStore = 0 AND Timestamp < {0} LIMIT 5000",
+            archiveBefore, ct);
+        deleted += await DeleteInBatchesAsync(db, "DELETE FROM audit_log WHERE Timestamp < {0} LIMIT 5000", auditBefore, ct);
+        return deleted;
+    }
+
+    /// <summary>
+    /// Deletes in small batches so no single statement holds row locks for long: the session store writes to the
+    /// same table on every FIX message, and one big DELETE stalled it once.
+    /// </summary>
+    private static async Task<int> DeleteInBatchesAsync(TickwireDbContext db, string sql, object arg, CancellationToken ct)
+    {
+        var total = 0;
+        int batch;
+        do
+        {
+            batch = await db.Database.ExecuteSqlRawAsync(sql, [arg], ct);
+            total += batch;
+        }
+        while (batch == 5000);
+
+        return total;
     }
 
     public async Task AuditAsync(string actor, string action, string? clientId, string? details, CancellationToken ct = default)
@@ -333,6 +370,8 @@ public sealed class InMemoryClientRepository(TimeProvider time) : IClientReposit
             (_, c) => c with { Sessions = [.. c.Sessions, saved] });
         return Task.FromResult(saved);
     }
+
+    public Task<int> PruneAsync(DateTime archiveBefore, DateTime auditBefore, CancellationToken ct = default) => Task.FromResult(0);
 
     public Task<IReadOnlyList<ClientRecord>> PurgeExpiredGuestsAsync(DateTime now, CancellationToken ct = default)
     {

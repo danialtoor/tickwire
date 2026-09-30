@@ -89,7 +89,10 @@ public sealed partial class EngineHost(
     private static partial void MigrationRetry(ILogger logger, int attempt, string error);
 }
 
-/// <summary>Hourly: removes expired guests, their sessions, orders and stored messages.</summary>
+/// <summary>
+/// Hourly: removes expired guests, their sessions, orders and stored messages, then applies retention (wire archive
+/// older than 3 days, audit log older than 30).
+/// </summary>
 public sealed partial class Housekeeping(IClientRepository repo, SessionManager sessions, FeedManager feeds, TimeProvider time,
     ILogger<Housekeeping> logger)
     : BackgroundService
@@ -125,11 +128,21 @@ public sealed partial class Housekeeping(IClientRepository repo, SessionManager 
             Purged(logger, removed.Count);
         }
 
+        var now = asOf ?? time.GetUtcNow().UtcDateTime;
+        var pruned = await repo.PruneAsync(now.AddDays(-3), now.AddDays(-30), ct).ConfigureAwait(false);
+        if (pruned > 0)
+        {
+            Pruned(logger, pruned);
+        }
+
         return removed.Count;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Purged {Count} expired guest(s)")]
     private static partial void Purged(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Retention removed {Count} old row(s)")]
+    private static partial void Pruned(ILogger logger, int count);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Guest purge failed")]
     private static partial void PurgeFailed(ILogger logger, Exception ex);

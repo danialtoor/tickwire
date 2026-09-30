@@ -217,6 +217,7 @@ public sealed class TickwireDbContext(DbContextOptions<TickwireDbContext> option
             e.Property(x => x.Raw).HasColumnType("varbinary(8192)");
             e.HasIndex(x => new { x.SessionKey, x.IsStore, x.SeqNum });
             e.HasIndex(x => new { x.SessionKey, x.Timestamp });
+            e.HasIndex(x => new { x.IsStore, x.Timestamp }); // retention: archive rows by age
         });
 
         b.Entity<OrderEntity>(e =>

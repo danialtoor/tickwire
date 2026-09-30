@@ -73,3 +73,23 @@ Invoke-KillSwitch -Global                     # everyone; asks for confirmation
   numbers.
 - If the API is down, the website switches to Replay mode on its own, and the decoder and analyzer keep working in
   the browser.
+
+### Database disk full (2026-09-30)
+
+**Symptom:** the site shows Replay mode; `/health` hangs or returns 503; API logs show `MySqlException: Connect
+Timeout expired`; even `fly ssh console -a tickwire-db` times out.
+
+**Cause:** MySQL 8 writes a binary log by default. With every FIX message persisted, it grew about 10 MB an hour
+and filled the 1 GB volume. A full disk makes MySQL block writes rather than fail, so connections hang. At the
+time, Fly's health check was `/health`, which included MySQL, so the proxy took the API out of rotation even though
+trading runs in memory.
+
+**Fix applied:** `--disable-log-bin` in `deploy/fly.db.toml` (single instance, no replicas); the old binlogs were
+deleted (disk went from 88% to 41%). Fly now checks `/health/live` (process only). `/health` reports MySQL
+trouble as `Degraded` within 3 seconds, and the smoke test still alerts on anything but `Healthy`. Housekeeping
+deletes wire-archive rows older than 3 days and audit rows older than 30, in 5,000-row batches.
+
+**If it happens again:**
+1. `fly machine exec <id> "df -h /var/lib/mysql" -a tickwire-db` (works when SSH doesn't).
+2. `fly machine restart <id> -a tickwire-db` to unstick MySQL; the API reconnects and flushes what it buffered.
+3. Find what's using the space before deleting anything; `fly volumes extend` is the fallback if it's real data.

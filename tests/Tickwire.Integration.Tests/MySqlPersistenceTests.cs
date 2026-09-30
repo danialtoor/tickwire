@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using MySqlConnector;
 using Testcontainers.MySql;
 using Tickwire.Api.Endpoints;
@@ -93,6 +94,48 @@ public sealed class MySqlPersistenceTests : IAsyncLifetime
         var resumed = after.Single(x => x.ClientCompId == guest.ClientCompId);
         resumed.NextSenderSeqNum.Should().BeGreaterThan(venueOutSeq, "the venue continues from its stored outbound sequence");
         resumed.NextTargetSeqNum.Should().BeGreaterThan(venueInSeq, "and from the stored inbound sequence, without a reset");
+    }
+
+    [SkippableFact]
+    public async Task Retention_prunes_old_archive_rows_but_keeps_the_resend_store_and_recent_rows()
+    {
+        Skip.If(_connectionString is null, "Docker is not available and TICKWIRE_TEST_MYSQL is not set");
+        await using var api = new MySqlApiFactory(_connectionString!);
+        (await api.CreateClient().GetAsync("/health")).EnsureSuccessStatusCode(); // starts the app, which migrates
+
+        var now = DateTime.UtcNow;
+        await using (var conn = new MySqlConnection(_connectionString))
+        {
+            await conn.OpenAsync();
+            foreach (var (seq, isStore, age) in new[] { (1, 0, 5), (2, 0, 4), (3, 1, 5), (4, 0, 1) })
+            {
+                var cmd = new MySqlCommand("""
+                    INSERT INTO session_messages (SessionKey, Direction, SeqNum, MsgType, Raw, Disposition, IsStore, Timestamp)
+                    VALUES ('RET:A->B', 'O', @seq, '8', X'00', 'Normal', @store, @ts)
+                    """, conn);
+                cmd.Parameters.AddWithValue("@seq", seq);
+                cmd.Parameters.AddWithValue("@store", isStore);
+                cmd.Parameters.AddWithValue("@ts", now.AddDays(-age));
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        var repo = api.Services.GetRequiredService<Tickwire.Persistence.IClientRepository>();
+        (await repo.PruneAsync(now.AddDays(-3), now.AddDays(-30))).Should().BeGreaterThanOrEqualTo(2);
+
+        await using var check = new MySqlConnection(_connectionString);
+        await check.OpenAsync();
+        var left = new List<int>();
+        await using (var reader = await new MySqlCommand("SELECT SeqNum FROM session_messages WHERE SessionKey = 'RET:A->B' ORDER BY SeqNum",
+            check).ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                left.Add(reader.GetInt32(0));
+            }
+        }
+
+        left.Should().Equal([3, 4], "old archive rows go; the resend store and recent rows stay");
     }
 
     private static async Task<T> Until<T>(Func<Task<T?>> probe, Func<T, bool> done, int timeoutMs = 45_000)

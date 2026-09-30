@@ -12,8 +12,10 @@ primary_region = "ord"
   source = "mysqldata"
   destination = "/var/lib/mysql"
 
+# --disable-log-bin: one instance, no replicas, so the binary log is dead weight. It's on by default in MySQL 8
+# and filled the 1 GB volume in under two days (see docs/runbook.md, "Database disk full").
 [processes]
-  app = "--innodb-buffer-pool-size=128M --performance-schema=OFF --max-connections=60"
+  app = "--innodb-buffer-pool-size=128M --performance-schema=OFF --max-connections=60 --disable-log-bin"
 
 [[vm]]
   size = "shared-cpu-1x"

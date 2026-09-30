@@ -117,6 +117,7 @@ public sealed class ApiTests(ApiFactory factory)
         var instruments = await http.GetFromJsonAsync<List<UnderlyingDto>>("/api/instruments", ApiFactory.Json);
         instruments!.Select(i => i.Symbol).Should().BeEquivalentTo(["SPY", "AAPL", "TSLA", "NVDA"]);
         (await http.GetAsync("/openapi/v1.json")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await http.GetStringAsync("/health/live")).Should().Be("Healthy");
     }
 
     [Fact]

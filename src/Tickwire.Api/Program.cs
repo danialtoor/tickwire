@@ -31,17 +31,22 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     services.AddSingleton<ISessionStoreBackend>(_ => new MySqlSessionStoreBackend(connectionString));
     services.AddSingleton(sp => new MySqlJournal(connectionString, sp.GetRequiredService<ILogger<MySqlJournal>>()));
     services.AddSingleton(new PersistenceMode("MySQL"));
+    // MySQL down is Degraded, not Unhealthy: trading runs in memory and the stores write behind and retry, so the
+    // API keeps serving. /health reports it (the smoke test alerts on anything but Healthy); the platform's liveness
+    // check uses /health/live, which never looks at the database.
     services.AddHealthChecks().AddAsyncCheck("mysql", async ct =>
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(3));
         try
         {
             await using var conn = new MySqlConnection(connectionString);
-            await conn.OpenAsync(ct);
+            await conn.OpenAsync(timeout.Token);
             return HealthCheckResult.Healthy();
         }
-        catch (MySqlException ex)
+        catch (Exception ex) when (ex is MySqlException or OperationCanceledException)
         {
-            return HealthCheckResult.Unhealthy("MySQL unreachable", ex);
+            return HealthCheckResult.Degraded("MySQL unreachable: history is buffered in memory until it's back", ex);
         }
     });
 }
@@ -179,6 +184,7 @@ app.UseSwaggerUI(o =>
 app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/api/health");
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 app.MapHub<LiveHub>("/hubs/live");
 app.MapTradingEndpoints();
 app.MapSessionEndpoints();

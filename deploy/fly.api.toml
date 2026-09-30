@@ -22,7 +22,7 @@ primary_region = "ord"
     grace_period = "20s"
     interval = "15s"
     method = "GET"
-    path = "/health"
+    path = "/health/live" # process liveness only: a database outage must not pull the API out of rotation
     timeout = "5s"
 
 # Raw FIX over TCP. Needs a dedicated IPv4 (fly ips allocate-v4); no TLS handler, bytes pass straight through.
