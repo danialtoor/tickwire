@@ -92,6 +92,8 @@ export interface RiskLimits {
   allowedTimeInForce: string[]
   maxMessagesPerSecond: number
   cancelOnDisconnect: boolean
+  maxAbsDelta: number
+  maxAbsVega: number
 }
 
 export interface SessionConfig {
@@ -313,4 +315,31 @@ export interface FeedSnapshot {
   status: FeedStatus
   quotes: ExternalQuote[]
   underlyings: ExternalUnderlying[]
+}
+
+export interface PositionView {
+  contract: { id: number; underlying: string; expiry: string; right: string; strike: number; occSymbol: string; display: string }
+  quantity: number
+  avgCost: number
+  mark: number
+  marketValue: number
+  unrealizedPnl: number
+  realizedPnl: number
+  delta: number
+  gamma: number
+  vega: number
+  theta: number
+}
+
+export interface PortfolioView {
+  clientId: string
+  positions: PositionView[]
+  realizedPnl: number
+  unrealizedPnl: number
+  totalPnl: number
+  delta: number
+  gamma: number
+  vega: number
+  theta: number
+  time: string
 }

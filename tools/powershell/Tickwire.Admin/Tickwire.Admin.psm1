@@ -142,7 +142,9 @@ function Set-RiskLimit {
         [ValidateSet('Limit', 'Market')][string[]] $AllowedOrderTypes = @('Limit', 'Market'),
         [ValidateSet('Day', 'ImmediateOrCancel', 'FillOrKill')][string[]] $AllowedTimeInForce = @('Day', 'ImmediateOrCancel', 'FillOrKill'),
         [int] $MaxMessagesPerSecond = 10,
-        [bool] $CancelOnDisconnect = $true
+        [bool] $CancelOnDisconnect = $true,
+        [double] $MaxAbsDelta = 10000,
+        [double] $MaxAbsVega = 10000
     )
     process {
         $body = [ordered]@{
@@ -156,6 +158,8 @@ function Set-RiskLimit {
             allowedTimeInForce   = $AllowedTimeInForce
             maxMessagesPerSecond = $MaxMessagesPerSecond
             cancelOnDisconnect   = $CancelOnDisconnect
+            maxAbsDelta          = $MaxAbsDelta
+            maxAbsVega           = $MaxAbsVega
         }
         if ($PSCmdlet.ShouldProcess($ClientId, 'Update risk limits')) {
             Invoke-TickwireApi -Method PUT -Path "/api/clients/$ClientId/limits" -Body $body

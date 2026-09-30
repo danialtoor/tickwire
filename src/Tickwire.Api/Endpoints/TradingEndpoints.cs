@@ -146,6 +146,13 @@ public static class TradingEndpoints
             .RequireRateLimiting("orders")
             .WithSummary("Sends a NewOrderMultileg(AB): a spread with a net limit price, over the caller's FIX session");
 
+        api.MapGet("/positions", async (HttpContext http, PositionKeeper positions) =>
+            {
+                var caller = await Auth.CallerAsync(http);
+                return caller.ClientId is null ? Auth.Unauthorized() : Results.Ok(positions.Snapshot(caller.ClientId));
+            })
+            .WithSummary("Positions, P&L and portfolio greeks, marked to the current market");
+
         api.MapGet("/orders", async (HttpContext http, SessionManager sessions, OrderManager oms, CancellationToken ct) =>
             {
                 var caller = await Auth.CallerAsync(http);

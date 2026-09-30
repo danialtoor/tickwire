@@ -124,6 +124,9 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
 
     public void AddListener(IOmsListener listener) => _listeners.Add(listener);
 
+    /// <summary>Enables delta/vega limits. The source must be updated on this loop (register it as a listener too).</summary>
+    public IPortfolioRisk? PortfolioRisk { get; set; }
+
     public void Start() => _loop ??= Task.Run(RunAsync);
 
     public void Submit(NewOrderRequest request) => _inbox.Writer.TryWrite(request);
@@ -314,6 +317,11 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
             var opposite = r.Side == Side.Buy ? quote?.Ask : quote?.Bid;
             reject = PreTradeRisk.Check(limits, r.Contract, r.Type, r.TimeInForce, r.Price, r.Quantity, OpenCount(client.ClientId),
                 quote?.Theo, opposite);
+            if (reject is null && PortfolioRisk is { } pr)
+            {
+                var per = pr.PerContract(r.Contract, r.Side);
+                reject = PortfolioLimits.Check(limits, pr.Exposure(client.ClientId), (per.Delta * (double)r.Quantity, per.Vega * (double)r.Quantity));
+            }
         }
 
         if (reject is { } rr)
@@ -372,6 +380,17 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
         {
             reject = PreTradeRisk.CheckSpread(limits, r.Legs, r.TimeInForce, r.Price, r.Quantity, OpenCount(client.ClientId),
                 id => _marketData.Quote(id)?.Theo);
+            if (reject is null && PortfolioRisk is { } pr)
+            {
+                var exposure = r.Legs.Aggregate((Delta: 0.0, Vega: 0.0), (acc, l) =>
+                {
+                    var legSide = r.Side == Side.Buy ? l.Side : (l.Side == Side.Buy ? Side.Sell : Side.Buy);
+                    var per = pr.PerContract(l.Contract, legSide);
+                    var n = (double)r.Quantity * l.Ratio;
+                    return (acc.Delta + (per.Delta * n), acc.Vega + (per.Vega * n));
+                });
+                reject = PortfolioLimits.Check(limits, pr.Exposure(client.ClientId), exposure);
+            }
         }
 
         if (reject is { } rr)

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Positions and portfolio risk**: average-cost positions from outright and spread leg fills, realized and
+  unrealized P&L marked at mid, portfolio delta/gamma/vega/theta, cash settlement at intrinsic on expiry.
+  New pre-trade delta and vega limits (orders that reduce exposure always pass). Positions tab in the Trader,
+  `GET /api/positions`, and `-MaxAbsDelta`/`-MaxAbsVega` on `Set-RiskLimit`.
+
 ## 1.1.0 (2026-09-30)
 
 - **Multi-leg spreads**: NewOrderMultileg (35=AB) with 2–4 legs, net limit price, all-or-none leg execution against the

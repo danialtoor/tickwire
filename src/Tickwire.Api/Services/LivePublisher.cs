@@ -121,6 +121,7 @@ public sealed class LivePublisher(
     InstrumentRegistry instruments,
     BookSubscriptions books,
     OpsSnapshotter ops,
+    PositionKeeper positions,
     ILogger<LivePublisher> logger) : BackgroundService
 {
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
@@ -194,6 +195,10 @@ public sealed class LivePublisher(
             try
             {
                 await hub.Clients.Group("ops").SendAsync("ops", ops.Snapshot(), ct).ConfigureAwait(false);
+                foreach (var clientId in positions.Clients)
+                {
+                    await hub.Clients.Group($"orders:{clientId}").SendAsync("portfolio", positions.Snapshot(clientId), ct).ConfigureAwait(false);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

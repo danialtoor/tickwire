@@ -39,6 +39,8 @@ public sealed class RiskLimitsEntity
     public required string AllowedTimeInForce { get; set; }
 
     public int MaxMessagesPerSecond { get; set; }
+    public double MaxAbsDelta { get; set; }
+    public double MaxAbsVega { get; set; }
     public bool CancelOnDisconnect { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

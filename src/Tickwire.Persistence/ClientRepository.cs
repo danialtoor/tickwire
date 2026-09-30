@@ -75,6 +75,8 @@ public static class LimitsMapping
             AllowedOrderTypes = [.. e.AllowedOrderTypes.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Enum.Parse<OrderType>)],
             AllowedTimeInForce = [.. e.AllowedTimeInForce.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Enum.Parse<TimeInForce>)],
             MaxMessagesPerSecond = e.MaxMessagesPerSecond,
+            MaxAbsDelta = e.MaxAbsDelta,
+            MaxAbsVega = e.MaxAbsVega,
             CancelOnDisconnect = e.CancelOnDisconnect,
         };
 
@@ -90,6 +92,8 @@ public static class LimitsMapping
         AllowedOrderTypes = string.Join(',', l.AllowedOrderTypes),
         AllowedTimeInForce = string.Join(',', l.AllowedTimeInForce),
         MaxMessagesPerSecond = l.MaxMessagesPerSecond,
+        MaxAbsDelta = l.MaxAbsDelta,
+        MaxAbsVega = l.MaxAbsVega,
         CancelOnDisconnect = l.CancelOnDisconnect,
         UpdatedAt = now,
     };

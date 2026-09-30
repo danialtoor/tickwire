@@ -25,6 +25,12 @@ public sealed record RiskLimits
     /// <summary>New/cancel/replace messages per second before throttling.</summary>
     public int MaxMessagesPerSecond { get; init; } = 20;
 
+    /// <summary>Largest net portfolio delta allowed after an order fills, in shares (0 = no limit).</summary>
+    public double MaxAbsDelta { get; init; } = 25_000;
+
+    /// <summary>Largest net portfolio vega allowed after an order fills, in $ per vol point (0 = no limit).</summary>
+    public double MaxAbsVega { get; init; } = 25_000;
+
     /// <summary>Cancel all open orders when the client's FIX session disconnects.</summary>
     public bool CancelOnDisconnect { get; init; } = true;
 
@@ -34,6 +40,8 @@ public sealed record RiskLimits
         MaxNotional = 50_000,
         MaxOpenOrders = 25,
         MaxMessagesPerSecond = 10,
+        MaxAbsDelta = 10_000,
+        MaxAbsVega = 10_000,
     };
 }
 
@@ -83,9 +91,37 @@ public enum RiskRejectCode
     PriceBand,
     MaxOpenOrders,
     NoMarketData,
+    DeltaLimit,
+    VegaLimit,
 }
 
 public readonly record struct RiskResult(RiskRejectCode Code, string Text, OrdRejReason FixReason);
+
+public static class PortfolioLimits
+{
+    /// <summary>Checks the portfolio as if the order filled completely: current exposure plus the order's.</summary>
+    public static RiskResult? Check(RiskLimits limits, (double Delta, double Vega) current, (double Delta, double Vega) order)
+    {
+        var delta = current.Delta + order.Delta;
+        var vega = current.Vega + order.Vega;
+        // Orders that reduce exposure are always allowed, even when the portfolio is already over a limit.
+        if (limits.MaxAbsDelta > 0 && Math.Abs(delta) > limits.MaxAbsDelta && Math.Abs(delta) > Math.Abs(current.Delta))
+        {
+            return new(RiskRejectCode.DeltaLimit,
+                $"Portfolio delta would be {delta:N0} shares (now {current.Delta:N0}); limit is ±{limits.MaxAbsDelta:N0}",
+                OrdRejReason.OrderExceedsLimit);
+        }
+
+        if (limits.MaxAbsVega > 0 && Math.Abs(vega) > limits.MaxAbsVega && Math.Abs(vega) > Math.Abs(current.Vega))
+        {
+            return new(RiskRejectCode.VegaLimit,
+                $"Portfolio vega would be ${vega:N0} per vol point (now ${current.Vega:N0}); limit is ±${limits.MaxAbsVega:N0}",
+                OrdRejReason.OrderExceedsLimit);
+        }
+
+        return null;
+    }
+}
 
 /// <summary>Pre-trade checks. Pure functions of the request, the limits and market data, so they are easy to test.</summary>
 public static class PreTradeRisk

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Book, Chain, ExternalQuote, ExternalUnderlying, FeedSnapshot, FeedStatus, Guest, OrderRow, Ops, SessionLog, TradePrint, Underlying, WireEvent } from '../lib/types'
+import type { Book, Chain, ExternalQuote, ExternalUnderlying, FeedSnapshot, FeedStatus, Guest, OrderRow, Ops, PortfolioView, SessionLog, TradePrint, Underlying, WireEvent } from '../lib/types'
 
 export type Mode = 'checking' | 'live' | 'replay'
 
@@ -27,6 +27,7 @@ interface State {
   ops: Ops | null
   selected: { underlying: string; expiry: string | null; contractId: number | null }
   feed: FeedStatus | null
+  portfolio: PortfolioView | null
   liveQuotes: Record<string, ExternalQuote>
   liveUnderlyings: Record<string, ExternalUnderlying>
 
@@ -44,6 +45,7 @@ interface State {
   resetSession: () => void
   applyFeed: (snapshot: FeedSnapshot, replace?: boolean) => void
   setFeedStatus: (status: FeedStatus) => void
+  setPortfolio: (p: PortfolioView | null) => void
 }
 
 export const useStore = create<State>((set) => ({
@@ -60,6 +62,7 @@ export const useStore = create<State>((set) => ({
   ops: null,
   selected: { underlying: 'SPY', expiry: null, contractId: null },
   feed: null,
+  portfolio: null,
   liveQuotes: {},
   liveUnderlyings: {},
 
@@ -97,7 +100,7 @@ export const useStore = create<State>((set) => ({
     }),
   setOps: (ops) => set({ ops }),
   select: (patch) => set((s) => ({ selected: { ...s.selected, ...patch } })),
-  resetSession: () => set({ orders: [], wire: [], logs: [], feed: null, liveQuotes: {}, liveUnderlyings: {} }),
+  resetSession: () => set({ orders: [], wire: [], logs: [], feed: null, portfolio: null, liveQuotes: {}, liveUnderlyings: {} }),
   applyFeed: (snapshot, replace = false) =>
     set((s) => {
       const liveQuotes = replace ? {} : { ...s.liveQuotes }
@@ -106,5 +109,6 @@ export const useStore = create<State>((set) => ({
       for (const u of snapshot.underlyings) liveUnderlyings[u.symbol] = u
       return { feed: snapshot.status, liveQuotes, liveUnderlyings }
     }),
+  setPortfolio: (portfolio) => set({ portfolio }),
   setFeedStatus: (status) => set(status.state === 'Idle' ? { feed: status, liveQuotes: {}, liveUnderlyings: {} } : { feed: status }),
 }))

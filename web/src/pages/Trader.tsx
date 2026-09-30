@@ -9,6 +9,7 @@ import { ExpiryBar } from '../components/ExpiryBar'
 import { Inspector, type InspectorView } from '../components/Inspector'
 import { OrderTicket } from '../components/OrderTicket'
 import { SpotChart } from '../components/SpotChart'
+import { Positions } from '../components/Positions'
 import { SpreadTicket } from '../components/SpreadTicket'
 import { api } from '../lib/api'
 import { cn, expiryLabel, pct, px, time } from '../lib/format'
@@ -34,6 +35,7 @@ export default function Trader() {
   const spot = useStore((s) => s.spotHistory[s.selected.underlying] ?? NO_POINTS)
   const storeOrders = useStore((s) => s.orders)
   const feed = useStore((s) => s.feed)
+  const portfolio = useStore((s) => s.portfolio)
   const liveQuotes = useStore((s) => s.liveQuotes)
   const liveUnderlyings = useStore((s) => s.liveUnderlyings)
   const setOrders = useStore((s) => s.setOrders)
@@ -43,7 +45,7 @@ export default function Trader() {
   const [toast, setToast] = useState<string | null>(null)
   const [view, setView] = useState<InspectorView>('venue')
   const [orderFilter, setOrderFilter] = useState<string | null>(null)
-  const [bottomTab, setBottomTab] = useState<'blotter' | 'chaos' | 'tape'>('blotter')
+  const [bottomTab, setBottomTab] = useState<'blotter' | 'positions' | 'chaos' | 'tape'>('blotter')
   const [ticketTab, setTicketTab] = useState<'single' | 'spread'>('single')
   const [error, setError] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -69,6 +71,7 @@ export default function Trader() {
         await live.start()
         await Promise.all([live.client(g.token), live.ops(), live.chain(useStore.getState().selected.underlying, useStore.getState().selected.expiry)])
         useStore.getState().applyFeed(await api.feed(g.token), true)
+        useStore.getState().setPortfolio(await api.positions(g.token))
         const traffic = await api.traffic(g.token, g.clientCompId, 400)
         useStore.getState().addWire(traffic.messages)
         useStore.getState().addLogs(traffic.logs)
@@ -284,20 +287,21 @@ export default function Trader() {
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <section className="panel min-w-0">
           <div className="flex items-center gap-1 border-b border-line px-2 py-1.5">
-            {(['blotter', 'chaos', 'tape'] as const).map((t) => (
+            {(['blotter', 'positions', 'chaos', 'tape'] as const).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setBottomTab(t)}
                 className={cn('rounded-md px-2.5 py-1 text-xs font-medium capitalize', bottomTab === t ? 'bg-panel-2 text-ink' : 'text-muted hover:text-ink-2')}
               >
-                {t === 'chaos' ? '⚡ Chaos' : t === 'blotter' ? `Blotter (${storeOrders.length})` : 'Time & sales'}
+                {t === 'chaos' ? '⚡ Chaos' : t === 'blotter' ? `Blotter (${storeOrders.length})` : t === 'positions' ? `Positions (${portfolio?.positions.length ?? 0})` : 'Time & sales'}
               </button>
             ))}
           </div>
           {bottomTab === 'blotter' && (
             <Blotter rows={storeOrders} token={guest?.token ?? null} selectedClOrdId={orderFilter} onSelect={setOrderFilter} onAction={say} />
           )}
+          {bottomTab === 'positions' && <Positions portfolio={portfolio} />}
           {bottomTab === 'chaos' && (
             <ChaosPanel
               token={mode === 'live' ? (guest?.token ?? null) : null}

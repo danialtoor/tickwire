@@ -228,6 +228,13 @@ with a readable Text(58):
 | Duplicate ClOrdID | | 6 | `Duplicate ClOrdID ORD-1` |
 | Spreads: legs, underlying, band vs strategy theo | 2–4 legs, one underlying | 99 | `Net price 9.99 is outside the band of strategy theo 2.14 ± 3.26` |
 | Unknown instrument | | 1 | `Unknown instrument: SPY 2026-10-02 565 call is not listed` |
+| Portfolio delta (shares) | ±10,000 | 3 | `Portfolio delta would be 10,450 shares (now 9,900); limit is ±10,000` |
+| Portfolio vega ($ per vol point) | ±$10,000 | 3 | `Portfolio vega would be $10,200 per vol point (now $9,950); limit is ±$10,000` |
+
+Delta and vega limits look at the whole portfolio after the order, assuming it fills, and only block orders that
+increase the exposure: an order that brings delta or vega back toward zero is always allowed, even over the limit.
+Spreads are checked on the net exposure of all their legs. Positions, P&L and greeks are at `GET /api/positions` and
+pushed on the `portfolio` SignalR event once a second.
 
 Engaging the kill switch also cancels every open order (`150=4`, `58=Kill switch engaged`). By default a client's
 open orders are canceled when its session disconnects (cancel-on-disconnect).

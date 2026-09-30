@@ -17,6 +17,7 @@ public sealed partial class EngineHost(
     FixOrderGateway gateway,
     EngineMetrics metrics,
     LiveOrderPublisher livePublisher,
+    PositionKeeper positions,
     SessionManager sessions,
     IOptions<TickwireOptions> options,
     IServiceProvider services,
@@ -34,6 +35,8 @@ public sealed partial class EngineHost(
         oms.AddListener(gateway);
         oms.AddListener(metrics);
         oms.AddListener(livePublisher);
+        oms.AddListener(positions);
+        oms.PortfolioRisk = positions;
         if (services.GetService<MySqlJournal>() is { } journal)
         {
             oms.AddListener(journal);

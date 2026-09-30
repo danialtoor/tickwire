@@ -18,7 +18,9 @@ public sealed record LimitsBody(
     string[] AllowedOrderTypes,
     string[] AllowedTimeInForce,
     int MaxMessagesPerSecond,
-    bool CancelOnDisconnect);
+    bool CancelOnDisconnect,
+    double? MaxAbsDelta = null,
+    double? MaxAbsVega = null);
 
 public sealed record KillBody(bool Engaged);
 
@@ -228,6 +230,8 @@ public static class AdminEndpoints
                 AllowedTimeInForce = [.. b.AllowedTimeInForce.Select(Enum.Parse<TimeInForce>)],
                 MaxMessagesPerSecond = b.MaxMessagesPerSecond,
                 CancelOnDisconnect = b.CancelOnDisconnect,
+                MaxAbsDelta = Math.Clamp(b.MaxAbsDelta ?? 10_000, 0, isAdmin ? 10_000_000 : 100_000),
+                MaxAbsVega = Math.Clamp(b.MaxAbsVega ?? 10_000, 0, isAdmin ? 10_000_000 : 100_000),
             };
             return true;
         }

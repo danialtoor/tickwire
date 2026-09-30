@@ -19,3 +19,10 @@ One line per choice the plan left open. Significant choices get an ADR in `docs/
 - 2026-09-29: External data providers are shown as text wordmarks, not logo files, and SpiderRock is listed by name at the owner's request (overriding the original no-SpiderRock-branding rule). Live quotes display only to the visitor who connected them. See docs/market-data.md.
 - 2026-09-30: Underlyings mean-revert to their starting price (Ornstein-Uhlenbeck on log price, kappa 12/yr) and a roller delists passed expiries (resting orders get ExecType=Expired) and lists the next Friday with strikes centred on the current price, so the demo stays realistic when the server runs for weeks.
 - 2026-09-30: Spreads (35=AB) execute against the outright books all-or-none per unit (leg-ratio matching at top of book) rather than in a separate complex order book; spread orders don't show in outright depth. Replace isn't supported for spreads (cancel and resend).
+
+## Positions are rebuilt in memory, not stored
+
+The PositionKeeper is an OMS listener that updates each client's positions on the same loop that emits fills, so
+the Positions tab and the delta/vega checks never disagree with the blotter. Positions aren't persisted: a restart
+starts everyone flat. Orders and executions are still in MySQL, so a replay on startup would be straightforward,
+but the demo resets guests daily anyway and it kept the risk path free of database reads.

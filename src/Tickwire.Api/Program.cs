@@ -69,6 +69,7 @@ services.AddSingleton(sp =>
 });
 services.AddSingleton(sp => new EngineMetrics(sp.GetRequiredService<TimeProvider>()));
 services.AddSingleton<FixOrderGateway>();
+services.AddSingleton(sp => new PositionKeeper(sp.GetRequiredService<MarketDataCache>(), sp.GetRequiredService<TimeProvider>()));
 services.AddSingleton<LiveBus>();
 services.AddSingleton(sp => new WireTap(sp.GetRequiredService<LiveBus>(), sp.GetRequiredService<EngineMetrics>(),
     sp.GetService<MySqlJournal>()));

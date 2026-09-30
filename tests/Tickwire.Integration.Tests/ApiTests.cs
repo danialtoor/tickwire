@@ -196,6 +196,29 @@ public sealed class ApiTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Fills_become_positions_and_the_delta_limit_blocks_adding_exposure()
+    {
+        var (http, guest) = await factory.NewGuestAsync();
+        var call = await AtmCallAsync(http);
+        await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask! + 0.10m, 3));
+
+        var portfolio = await Eventually(() => http.GetFromJsonAsync<JsonElement?>("/api/positions", ApiFactory.Json),
+            p => p!.Value.GetProperty("positions").GetArrayLength() == 1);
+        var pos = portfolio!.Value.GetProperty("positions")[0];
+        pos.GetProperty("quantity").GetDecimal().Should().Be(3);
+        pos.GetProperty("contract").GetProperty("id").GetInt32().Should().Be(call.Id);
+        portfolio.Value.GetProperty("delta").GetDouble().Should().BePositive();
+
+        var limits = new LimitsBody(100, 50_000, 0.5m, 0.25m, 25, null, ["Limit", "Market"], ["Day", "ImmediateOrCancel", "FillOrKill"], 10, true,
+            MaxAbsDelta: 100);
+        (await http.PutAsJsonAsync($"/api/clients/{guest.ClientId}/limits", limits)).EnsureSuccessStatusCode();
+        await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 1));
+
+        await Eventually(() => http.GetFromJsonAsync<SessionTrafficDto>($"/api/sessions/{guest.ClientCompId}/messages", ApiFactory.Json),
+            t => t.Messages.Any(m => m.Side == "client" && m.Raw.Contains("Portfolio delta would be", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task Own_FIX_engine_connects_over_TCP_with_generated_credentials()
     {
         var (http, _) = await factory.NewGuestAsync();
