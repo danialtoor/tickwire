@@ -20,6 +20,9 @@ public sealed record NewOrderRequest(
 {
     /// <summary>What the client sent as the symbol, echoed on rejects when the instrument could not be resolved.</summary>
     public string? RawSymbol { get; init; }
+
+    /// <summary>ExDestination(100): an exchange code to send the order to directly, or null for the smart order router.</summary>
+    public string? Destination { get; init; }
 }
 
 /// <summary>A multi-leg (spread) order: NewOrderMultileg(AB). Price is the net strategy price per unit.</summary>
@@ -57,7 +60,8 @@ public interface IOmsListener
 /// <summary>The parts of the venue the OMS uses. <see cref="SimulatedVenue"/> in production, fakes in tests.</summary>
 public interface IExecutionVenue
 {
-    void Submit(long orderId, OptionContract contract, Side side, OrderType type, TimeInForce tif, decimal? price, decimal quantity);
+    void Submit(long orderId, OptionContract contract, Side side, OrderType type, TimeInForce tif, decimal? price, decimal quantity,
+        string? destination);
 
     void Cancel(long orderId, OptionContract contract);
 
@@ -68,8 +72,9 @@ public interface IExecutionVenue
 
 public sealed class SimulatedVenueAdapter(SimulatedVenue venue) : IExecutionVenue
 {
-    public void Submit(long orderId, OptionContract contract, Side side, OrderType type, TimeInForce tif, decimal? price, decimal quantity) =>
-        venue.Submit(orderId, contract, side, type, tif, price, quantity);
+    public void Submit(long orderId, OptionContract contract, Side side, OrderType type, TimeInForce tif, decimal? price, decimal quantity,
+        string? destination) =>
+        venue.Submit(orderId, contract, side, type, tif, price, quantity, destination);
 
     public void Cancel(long orderId, OptionContract contract) => venue.Cancel(orderId, contract);
 
@@ -343,6 +348,7 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
             OrderQty = r.Quantity,
             LeavesQty = r.Quantity,
             Account = r.Account,
+            Destination = r.Destination,
             CreatedAt = Now,
             UpdatedAt = Now,
         };
@@ -352,7 +358,7 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
         _pendingReceived[order.Id] = r.ReceivedTimestamp;
 
         Report(order, ExecType.PendingNew);
-        _venue.Submit(order.Id, order.Contract, order.Side, order.OrdType, order.TimeInForce, order.Price, order.OrderQty);
+        _venue.Submit(order.Id, order.Contract, order.Side, order.OrdType, order.TimeInForce, order.Price, order.OrderQty, order.Destination);
     }
 
     private void OnNewSpread(NewSpreadRequest r)
@@ -440,6 +446,7 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
         }
 
         _pendingReceived.Remove(order.Id, out var received);
+        order.Exchange = "SMART"; // legs go to whichever exchange has the best price for each
         order.Apply(OrderEvent.Accept);
         Report(order, ExecType.New, received: received);
         foreach (var execution in e.Executions)
@@ -460,13 +467,20 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
     {
         order.AddFill(execution.StrategyPrice, execution.Units);
         Report(order, ExecType.Trade, lastQty: execution.Units, lastPx: execution.StrategyPrice);
+        // Each leg takes liquidity from the outright book of whichever exchange had the best price for it.
         foreach (var leg in execution.Legs)
         {
             var contract = order.Legs!.First(l => l.Contract.Id == leg.ContractId).Contract;
+            var exchange = Exchanges.Find(leg.Exchange) ?? Exchanges.Primary;
+            var fee = exchange.TakerFee * leg.Quantity;
+            order.Fees += fee;
             var view = order.View();
             Emit(new ExecutionReportEvent(view, ExecType.Trade, NextExecId(), leg.Quantity, leg.Price, null, null, Now, null)
             {
                 Leg = new LegExecution(contract, leg.Side, leg.Quantity, leg.Price),
+                LastMkt = exchange.Code,
+                LastLiquidity = Liquidity.Removed,
+                Commission = fee,
             });
         }
     }
@@ -634,12 +648,13 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
         }
 
         _pendingReceived.Remove(order.Id, out var received);
+        order.Exchange = e.Exchange;
         order.Apply(OrderEvent.Accept);
-        Report(order, ExecType.New, received: received);
+        Report(order, ExecType.New, received: received, routeReason: e.RouteReason);
 
         foreach (var fill in e.Fills)
         {
-            ApplyFill(order, fill.Price, fill.Quantity);
+            ApplyFill(order, fill.Price, fill.Quantity, Liquidity.Removed);
         }
 
         if (e.CanceledQuantity > 0 && order.IsOpen)
@@ -654,15 +669,18 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
     {
         if (_orders.TryGetValue(e.OrderId, out var order) && order.IsOpen)
         {
-            ApplyFill(order, e.Price, e.Quantity);
+            ApplyFill(order, e.Price, e.Quantity, Liquidity.Added);
         }
     }
 
-    private void ApplyFill(Order order, decimal price, decimal quantity)
+    private void ApplyFill(Order order, decimal price, decimal quantity, Liquidity liquidity)
     {
         // Fills during a pending cancel/replace still belong to the order's current ClOrdID: the request isn't accepted yet.
         order.AddFill(price, quantity);
-        Report(order, ExecType.Trade, lastQty: quantity, lastPx: price);
+        var exchange = Exchanges.Find(order.Exchange) ?? Exchanges.Primary;
+        var fee = exchange.Fee(liquidity) * quantity;
+        order.Fees += fee;
+        Report(order, ExecType.Trade, lastQty: quantity, lastPx: price, fill: (exchange.Code, liquidity, fee));
         if (order.Status == OrdStatus.Filled)
         {
             order.Pending = null;
@@ -730,7 +748,7 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
 
         foreach (var fill in e.Fills)
         {
-            ApplyFill(order, fill.Price, fill.Quantity);
+            ApplyFill(order, fill.Price, fill.Quantity, Liquidity.Removed);
         }
     }
 
@@ -797,7 +815,8 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
     }
 
     private void Report(Order order, ExecType execType, decimal lastQty = 0, decimal lastPx = 0, string? text = null,
-        string? clOrdIdOverride = null, string? origOverride = null, long? received = null)
+        string? clOrdIdOverride = null, string? origOverride = null, long? received = null, string? routeReason = null,
+        (string Exchange, Liquidity Liquidity, decimal Fee)? fill = null)
     {
         order.UpdatedAt = Now;
         if (order.IsTerminal)
@@ -811,7 +830,13 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
             view = view with { ClOrdID = clOrdIdOverride, OrigClOrdID = origOverride };
         }
 
-        Emit(new ExecutionReportEvent(view, execType, NextExecId(), lastQty, lastPx, text, null, Now, received));
+        Emit(new ExecutionReportEvent(view, execType, NextExecId(), lastQty, lastPx, text, null, Now, received)
+        {
+            RouteReason = routeReason,
+            LastMkt = fill?.Exchange,
+            LastLiquidity = fill?.Liquidity,
+            Commission = fill?.Fee,
+        });
     }
 
     private void CancelReject(string clientId, string clOrdId, string origClOrdId, Order? order, CxlRejReason reason, bool forReplace,

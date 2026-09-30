@@ -89,7 +89,10 @@ export const api = {
   me: (token: string) => request<Me>('/api/me', { token }),
   orders: (token: string) => request<OrderRow[]>('/api/orders', { token }),
   positions: (token: string) => request<PortfolioView>('/api/positions', { token }),
-  placeOrder: (token: string, body: { contractId: number; side: string; type: string; tif: string; price: number | null; quantity: number }) =>
+  placeOrder: (
+    token: string,
+    body: { contractId: number; side: string; type: string; tif: string; price: number | null; quantity: number; destination?: string },
+  ) =>
     request<{ clOrdID: string }>('/api/orders', { method: 'POST', token, body: JSON.stringify(body) }),
   placeSpread: (
     token: string,

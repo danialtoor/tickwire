@@ -26,3 +26,15 @@ The PositionKeeper is an OMS listener that updates each client's positions on th
 the Positions tab and the delta/vega checks never disagree with the blotter. Positions aren't persisted: a restart
 starts everyone flat. Orders and executions are still in MySQL, so a replay on startup would be straightforward,
 but the demo resets guests daily anyway and it kept the risk path free of database reads.
+
+## The router lives on the market loop and doesn't split orders
+
+Each underlying's shard holds every exchange's book for its contracts, so the router picks an exchange on the same
+loop that then matches the order. It sees exactly the books the order will meet, with no stale quotes and no
+cross-thread reads. A real router works from a market data feed that can be a few microseconds old, and that race is
+part of the job. Here it would only make the demo nondeterministic.
+
+Orders go whole to one exchange. Sweeping several exchanges would mean child orders, with fills and a resting
+remainder on different books, which the OMS models as one order with one place to cancel. Guest orders are small
+next to the displayed size, so the simpler rule rarely costs anything, and the Text on the New report shows exactly
+what it chose.

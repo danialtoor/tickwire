@@ -1,5 +1,5 @@
-import { px, qty } from '../lib/format'
-import type { Book } from '../lib/types'
+import { cn, px, qty } from '../lib/format'
+import type { Book, VenueQuote } from '../lib/types'
 
 /** Five levels each side; bar length is quantity relative to the largest level shown. */
 export function BookLadder({ book }: { book: Book | null }) {
@@ -28,7 +28,38 @@ export function BookLadder({ book }: { book: Book | null }) {
       ))}
       {book.bids.length === 0 && <div className="px-2 py-1 text-muted">No bids</div>}
       <div className="mt-2 px-2 text-[11px] text-muted">Volume {qty(book.volume)}</div>
+      {book.venues && book.venues.length > 1 && <Venues venues={book.venues} />}
     </div>
+  )
+}
+
+/** Each exchange's top of book; the consolidated best (NBBO) on each side is highlighted. */
+function Venues({ venues }: { venues: VenueQuote[] }) {
+  const bestBid = Math.max(...venues.map((v) => v.bid ?? -Infinity))
+  const bestAsk = Math.min(...venues.map((v) => v.ask ?? Infinity))
+  return (
+    <table className="mt-3 w-full text-[11.5px]" data-testid="venue-quotes">
+      <thead className="text-[10px] uppercase tracking-wider text-muted">
+        <tr className="[&>th]:px-2 [&>th]:pb-1 [&>th]:font-medium">
+          <th className="text-left">Exchange</th>
+          <th className="text-right">Bid</th>
+          <th className="text-right">Ask</th>
+        </tr>
+      </thead>
+      <tbody>
+        {venues.map((v) => (
+          <tr key={v.exchange} className="border-t border-line/50">
+            <td className="px-2 py-[3px] font-sans text-ink-2">{v.exchange}</td>
+            <td className={cn('px-2 py-[3px] text-right', v.bid === bestBid ? 'font-semibold text-buy' : 'text-muted')}>
+              {v.bid == null ? '—' : `${qty(v.bidSize)} × ${px(v.bid)}`}
+            </td>
+            <td className={cn('px-2 py-[3px] text-right', v.ask === bestAsk ? 'font-semibold text-sell' : 'text-muted')}>
+              {v.ask == null ? '—' : `${px(v.ask)} × ${qty(v.askSize)}`}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 

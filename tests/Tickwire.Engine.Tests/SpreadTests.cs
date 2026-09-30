@@ -59,17 +59,18 @@ public sealed class SpreadTests : IAsyncLifetime
     public async Task Marketable_vertical_fills_both_legs_at_the_natural_price()
     {
         var natural = Q(_c560).Ask!.Value - Q(_c565).Bid!.Value;
-        _oms.Submit(Spread("V1", Vertical, Side.Buy, natural, 3));
+        // 2 units: every market maker shows at least 2, so the best level on each leg's best exchange covers it.
+        _oms.Submit(Spread("V1", Vertical, Side.Buy, natural, 2));
         await SettleAsync();
 
         var reports = _listener.For("V1");
         reports.Select(r => r.ExecType).Should().StartWith([ExecType.PendingNew, ExecType.New]);
         var strategyFills = reports.Where(r => r.ExecType == ExecType.Trade && r.Leg is null).ToList();
         var legFills = reports.Where(r => r.Leg is not null).ToList();
-        strategyFills.Sum(r => r.LastQty).Should().Be(3);
+        strategyFills.Sum(r => r.LastQty).Should().Be(2);
         strategyFills.Should().OnlyContain(r => r.LastPx == natural);
         legFills.Where(r => r.Leg!.Contract == _c560).Should().OnlyContain(r => r.Leg!.Side == Side.Buy && r.Leg.Price == Q(_c560).Ask);
-        legFills.Where(r => r.Leg!.Contract == _c565).Sum(r => r.Leg!.Quantity).Should().Be(3);
+        legFills.Where(r => r.Leg!.Contract == _c565).Sum(r => r.Leg!.Quantity).Should().Be(2);
         reports[^1].Order.Status.Should().Be(OrdStatus.Filled);
         reports[^1].Order.Display.Should().EndWith("560/565 C vertical");
     }

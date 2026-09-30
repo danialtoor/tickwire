@@ -136,6 +136,7 @@ The listed chain is at `GET /api/chain/{underlying}?expiry=yyyy-MM-dd`.
 | 59 | TimeInForce | N | `0` day (default), `3` IOC, `4` FOK |
 | 60 | TransactTime | Y | |
 | 77 | PositionEffect | N | accepted, not used |
+| 100 | ExDestination | N | `TWX`, `NOVA` or `ARGO` to send the order to that exchange; omit for smart routing (§3, Routing) |
 
 Market orders never rest: whatever doesn't trade immediately is canceled. IOC cancels the remainder; FOK trades in
 full or not at all.
@@ -155,12 +156,41 @@ Every report carries the full order state:
 | 14 / 151 / 6 | CumQty / LeavesQty / AvgPx | `CumQty + LeavesQty = OrderQty` while the order is live; LeavesQty = 0 once done |
 | 48 / 22 | SecurityID / SecurityIDSource | OCC symbol, `8` |
 | 103 | OrdRejReason | on rejects (see §4) |
-| 58 | Text | reason for rejects and unsolicited cancels |
+| 58 | Text | reason for rejects and unsolicited cancels; on the New report, where the order was routed and why |
+| 30 | LastMkt | on trades: the exchange that filled it |
+| 12 / 13 | Commission / CommType | on trades: that exchange's fee for the fill, in dollars, `13=3` (absolute); negative is a rebate |
+| 851 | LastLiquidityInd | on trades: `1` added liquidity (was resting), `2` removed it |
 | 20001 | TheoValue | *custom*: Black-Scholes value at report time |
 | 20002 | UnderlyingLastPx | *custom*: underlying price at report time |
 
 A new order produces `PendingNew → New`, then `Trade` reports as it fills. Fills that arrive while a cancel or
 replace is pending keep the pending status (39=6 or E) and the order's current ClOrdID.
+
+### Routing
+
+The simulated market has three exchanges, each with its own order book per contract, its own market makers and its
+own fees. Names are made up:
+
+| Exchange | Taker fee | Maker fee | Market makers |
+|---|---|---|---|
+| `TWX` Tickwire Options (primary) | $0.50 | −$0.20 (rebate) | MM-ALPHA, MM-BETA |
+| `NOVA` Nova Options | $0.15 | $0.10 | MM-GAMMA: wider, more size |
+| `ARGO` Argo Options | $0.65 | −$0.40 (rebate) | MM-DELTA: tightest, small |
+
+Fees are per contract (`GET /api/exchanges`). Market data (the chain, `GET /api/book/{id}`) shows the consolidated
+best bid and offer across all three plus each exchange's own top of book.
+
+Without ExDestination(100), the smart order router sends each order whole to one exchange (it doesn't split):
+
+- **Marketable** (a market order, or a limit that crosses some exchange's quote): the exchange with the best all-in
+  price, meaning the displayed price plus the taker fee per share when buying, or minus it when selling. Ties go to
+  the bigger displayed size, then the cheaper fee. Whatever doesn't fill there rests there (day) or is canceled (IOC).
+- **Not marketable anywhere**: the exchange that pays best for posting (lowest maker fee: `ARGO`).
+
+The decision is made on the market's own loop against the exact books the order will meet, and the New report's
+Text(58) explains it, e.g. `Routed to ARGO: best all-in price 3.0465 (3.04 + $0.65 fee); next best TWX 3.075`.
+A replace stays on the same exchange. Spreads (35=AB) take each leg from whichever exchange has the best price for
+it, so each leg report carries its own LastMkt(30).
 
 ### Cancel and replace
 

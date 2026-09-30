@@ -5,7 +5,8 @@ using Tickwire.Venue;
 
 namespace Tickwire.Api.Endpoints;
 
-public sealed record NewOrderBody(int ContractId, string Side, string Type, string? Tif, decimal? Price, decimal Quantity);
+public sealed record NewOrderBody(int ContractId, string Side, string Type, string? Tif, decimal? Price, decimal Quantity,
+    string? Destination = null);
 
 public sealed record ReplaceBody(decimal? Price, decimal Quantity);
 
@@ -36,6 +37,12 @@ public static class TradingEndpoints
         api.MapGet("/book/{contractId:int}", (int contractId, MarketView market) =>
                 market.Book(contractId) is { } book ? Results.Ok(book) : Results.NotFound())
             .WithSummary("Five levels of depth for one contract");
+
+        api.MapGet("/exchanges", () => Exchanges.All.Select(e => new
+            {
+                e.Code, e.Name, e.TakerFee, e.MakerFee, Makers = e.Makers.Select(m => m.Name), Primary = e == Exchanges.Primary,
+            }))
+            .WithSummary("The simulated exchanges and their fee schedules (per contract; negative = rebate)");
 
         api.MapGet("/tape", (string? underlying, MarketView market) => market.Tape(underlying?.ToUpperInvariant()))
             .WithSummary("Recent trades");
@@ -97,7 +104,7 @@ public static class TradingEndpoints
                     return Results.Problem("The FIX session is reconnecting; try again in a few seconds", statusCode: 503);
                 }
 
-                var clOrdId = trader.SendNewOrder(contract, side, type, tif, body.Price, body.Quantity);
+                var clOrdId = trader.SendNewOrder(contract, side, type, tif, body.Price, body.Quantity, body.Destination);
                 return Results.Accepted(value: new OrderAccepted(clOrdId));
             })
             .RequireRateLimiting("orders")
@@ -268,6 +275,12 @@ public static class TradingEndpoints
             default:
                 error = "tif must be day, ioc or fok";
                 return false;
+        }
+
+        if (body.Destination is { Length: > 0 } d && !d.Equals("SMART", StringComparison.OrdinalIgnoreCase) && Exchanges.Find(d) is null)
+        {
+            error = $"destination must be SMART or one of {string.Join(", ", Exchanges.All.Select(e => e.Code))}";
+            return false;
         }
 
         // Quantity and price are deliberately not range-checked here: pre-trade risk in the OMS owns that, and its

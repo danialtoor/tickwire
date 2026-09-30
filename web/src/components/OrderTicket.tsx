@@ -21,6 +21,7 @@ export function OrderTicket({ quote, book, token, preset, disabled, onSent }: Pr
   const [quantity, setQuantity] = useState(10)
   const [type, setType] = useState<OrdType>('limit')
   const [tif, setTif] = useState<Tif>('day')
+  const [destination, setDestination] = useState('smart')
   const [price, setPrice] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +52,7 @@ export function OrderTicket({ quote, book, token, preset, disabled, onSent }: Pr
         tif,
         price: type === 'limit' ? priceNum : null,
         quantity,
+        destination: destination.toUpperCase(),
       })
       onSent(`NewOrderSingle sent · 11=${res.clOrdID}`)
     } catch (e) {
@@ -132,6 +134,11 @@ export function OrderTicket({ quote, book, token, preset, disabled, onSent }: Pr
         <Field label="Time in force">
           <Segmented value={tif} options={['day', 'ioc', 'fok']} onChange={(v) => setTif(v as Tif)} />
         </Field>
+        <div className="col-span-2">
+          <Field label={destination === 'smart' ? 'Route · best price after fees' : 'Route · ExDestination(100)'}>
+            <Segmented value={destination} options={['smart', 'twx', 'nova', 'argo']} onChange={setDestination} />
+          </Field>
+        </div>
       </div>
 
       <div className="num flex justify-between text-[11px] text-muted">

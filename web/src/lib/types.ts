@@ -61,6 +61,16 @@ export interface Book {
   bids: BookLevel[]
   asks: BookLevel[]
   time: string
+  /** Each exchange's own top of book; bids/asks are the consolidated depth. */
+  venues?: VenueQuote[]
+}
+
+export interface VenueQuote {
+  exchange: string
+  bid: number | null
+  bidSize: number
+  ask: number | null
+  askSize: number
 }
 
 export interface TradePrint {
@@ -70,6 +80,7 @@ export interface TradePrint {
   quantity: number
   side: 'buy' | 'sell'
   time: string
+  exchange?: string
 }
 
 export interface Guest {
@@ -149,6 +160,10 @@ export interface BlotterRow {
   lastQty: number
   lastPx: number
   legs?: BlotterLeg[] | null
+  /** Exchange the order went to (SMART for spreads), the ExDestination asked for, and fees so far (negative = rebate). */
+  exchange?: string | null
+  destination?: string | null
+  fees?: number
 }
 
 export interface ClientOrderState {

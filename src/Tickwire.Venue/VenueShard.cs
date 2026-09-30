@@ -9,10 +9,19 @@ public abstract record VenueEvent(long OrderId);
 
 /// <summary>Result of a new order: immediate fills, what rests, and what was canceled (IOC/FOK/market remainder).</summary>
 public sealed record OrderSubmitted(long OrderId, IReadOnlyList<Fill> Fills, decimal RestingQuantity, decimal CanceledQuantity,
-    string? CancelReason) : VenueEvent(OrderId);
+    string? CancelReason) : VenueEvent(OrderId)
+{
+    /// <summary>The exchange the order went to, and why (the router's explanation, or "Directed to ...").</summary>
+    public string Exchange { get; init; } = Exchanges.Primary.Code;
+
+    public string? RouteReason { get; init; }
+}
 
 /// <summary>A resting order traded against an incoming one.</summary>
-public sealed record PassiveFill(long OrderId, decimal Price, decimal Quantity) : VenueEvent(OrderId);
+public sealed record PassiveFill(long OrderId, decimal Price, decimal Quantity) : VenueEvent(OrderId)
+{
+    public string Exchange { get; init; } = Exchanges.Primary.Code;
+}
 
 public sealed record OrderCanceled(long OrderId, decimal CanceledQuantity) : VenueEvent(OrderId);
 
@@ -25,7 +34,10 @@ public sealed record ReplaceFailed(long OrderId, string Reason) : VenueEvent(Ord
 /// <summary>One leg of a spread: a contract, how many of it per spread unit, and its side when the spread is bought.</summary>
 public sealed record SpreadLeg(int ContractId, int Ratio, Side Side);
 
-public sealed record LegFill(int ContractId, Side Side, decimal Price, decimal Quantity);
+public sealed record LegFill(int ContractId, Side Side, decimal Price, decimal Quantity)
+{
+    public string Exchange { get; init; } = Exchanges.Primary.Code;
+}
 
 /// <summary>Spread units executed together, at a net strategy price, with the leg trades that made them up.</summary>
 public sealed record SpreadExecution(decimal Units, decimal StrategyPrice, IReadOnlyList<LegFill> Legs);
@@ -56,6 +68,9 @@ public sealed record VenueOptions
     public double MeanReversion { get; init; } = 12;
 
     public bool EnableMarketMakers { get; init; } = true;
+
+    /// <summary>The exchanges to run, primary first. Every contract has a book on each.</summary>
+    public IReadOnlyList<Exchange> Exchanges { get; init; } = Venue.Exchanges.All;
     public bool EnableNoiseTraders { get; init; } = true;
     public int Seed { get; init; } = 42;
 }
@@ -67,12 +82,6 @@ public sealed record VenueOptions
 /// </summary>
 public sealed partial class VenueShard : IAsyncDisposable
 {
-    private static readonly MarketMakerProfile[] Makers =
-    [
-        new("MM-ALPHA", HalfSpreadPct: 0.03, MinHalfSpread: 0.02m, MinSize: 5, MaxSize: 20),
-        new("MM-BETA", HalfSpreadPct: 0.06, MinHalfSpread: 0.05m, MinSize: 20, MaxSize: 60),
-    ];
-
     private readonly UnderlyingSpec _spec;
     private readonly VenueOptions _options;
     private readonly MarketDataCache _cache;
@@ -81,8 +90,15 @@ public sealed partial class VenueShard : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly Random _random;
     private readonly VolSurface _surface;
+    private readonly IReadOnlyList<Exchange> _exchanges;
+
+    /// <summary>Books per exchange, indexed like <see cref="_exchanges"/>. <see cref="_books"/> is the primary's.</summary>
+    private readonly Dictionary<int, OrderBook>[] _venues;
     private readonly Dictionary<int, OrderBook> _books;
+    private readonly (int Venue, MakerProfile Profile)[] _makers;
+    private readonly Dictionary<int, (decimal Price, decimal Volume)> _tape = [];
     private readonly Dictionary<long, int> _orderContract = [];
+    private readonly Dictionary<long, int> _orderVenue = [];
     private readonly Dictionary<long, decimal> _clientFilled = [];
     private readonly Dictionary<long, (int ContractId, int Maker)> _botOrders = [];
     private readonly Dictionary<(int ContractId, int Maker), (long Bid, long Ask, decimal BidPx, decimal AskPx)> _botQuotes = [];
@@ -109,7 +125,11 @@ public sealed partial class VenueShard : IAsyncDisposable
         _logger = logger ?? NullLogger.Instance;
         _random = new Random(HashCode.Combine(options.Seed, spec.Symbol.Length, spec.Symbol[0]));
         _surface = new VolSurface(spec.AtmImpliedVol);
-        _books = contracts.ToDictionary(c => c.Id, c => new OrderBook(c));
+        _exchanges = options.Exchanges;
+        var list = contracts.ToList();
+        _venues = [.. _exchanges.Select(e => list.ToDictionary(c => c.Id, c => new OrderBook(c, e.Code)))];
+        _books = _venues[0];
+        _makers = [.. _exchanges.SelectMany((e, i) => e.Makers.Select(m => (i, m)))];
         _spot = spec.InitialPrice;
     }
 
@@ -133,18 +153,45 @@ public sealed partial class VenueShard : IAsyncDisposable
         }
     }
 
-    public void Submit(long orderId, int contractId, Side side, OrderType type, TimeInForce tif, decimal? price, decimal quantity) =>
+    /// <summary>
+    /// A new order. With a <paramref name="destination"/> exchange code it goes there; otherwise the smart order router
+    /// picks the exchange from every book's current top (see <see cref="OrderRouter"/>). Routing happens on the shard loop,
+    /// so the router sees exactly the books the order will meet.
+    /// </summary>
+    public void Submit(long orderId, int contractId, Side side, OrderType type, TimeInForce tif, decimal? price, decimal quantity,
+        string? destination = null) =>
         Post(() =>
         {
-            var book = _books[contractId];
+            int venue;
+            string reason;
+            var directed = destination is null ? -1 : IndexOf(destination);
+            if (directed >= 0)
+            {
+                venue = directed;
+                reason = $"Directed to {_exchanges[venue].Code} (ExDestination)";
+            }
+            else
+            {
+                var tops = _venues.Select((v, i) => new VenueTop(_exchanges[i], v[contractId].BestBid, v[contractId].BestAsk)).ToList();
+                var decision = OrderRouter.Route(tops, side, type, price);
+                venue = IndexOf(decision.Exchange.Code);
+                reason = decision.Reason;
+            }
+
+            var book = _venues[venue][contractId];
             var result = book.Submit(orderId, side, type, tif, price, quantity);
             if (result.RestingQuantity > 0)
             {
                 _orderContract[orderId] = contractId;
+                _orderVenue[orderId] = venue;
                 _clientFilled[orderId] = result.FilledQuantity;
             }
 
-            Emit(new OrderSubmitted(orderId, result.Fills, result.RestingQuantity, result.CanceledQuantity, result.CancelReason));
+            Emit(new OrderSubmitted(orderId, result.Fills, result.RestingQuantity, result.CanceledQuantity, result.CancelReason)
+            {
+                Exchange = book.Exchange,
+                RouteReason = reason,
+            });
             AfterFills(book, side, result.Fills);
             return ValueTask.CompletedTask;
         });
@@ -188,7 +235,8 @@ public sealed partial class VenueShard : IAsyncDisposable
             return ValueTask.CompletedTask;
         }
 
-        if (_orderContract.Remove(orderId, out var contractId) && _books[contractId].Cancel(orderId) is { } qty)
+        if (_orderContract.Remove(orderId, out var contractId) && _orderVenue.Remove(orderId, out var venue)
+            && _venues[venue][contractId].Cancel(orderId) is { } qty)
         {
             _clientFilled.Remove(orderId);
             _dirty.Add(contractId);
@@ -228,12 +276,13 @@ public sealed partial class VenueShard : IAsyncDisposable
             return ValueTask.CompletedTask;
         }
 
-        var book = _books[contractId];
+        var book = _venues[_orderVenue[orderId]][contractId];
         var side = book.Get(orderId)!.Side;
         var result = book.Replace(orderId, newPrice, newRemaining)!.Value;
         if (result.RestingQuantity == 0)
         {
             _orderContract.Remove(orderId);
+            _orderVenue.Remove(orderId);
             _clientFilled.Remove(orderId);
         }
         else
@@ -254,7 +303,10 @@ public sealed partial class VenueShard : IAsyncDisposable
         {
             foreach (var c in added)
             {
-                _books.TryAdd(c.Id, new OrderBook(c));
+                for (var v = 0; v < _venues.Length; v++)
+                {
+                    _venues[v].TryAdd(c.Id, new OrderBook(c, _exchanges[v].Code));
+                }
             }
 
             RepriceAndRequote();
@@ -280,12 +332,13 @@ public sealed partial class VenueShard : IAsyncDisposable
             var id = book.Contract.Id;
             foreach (var (orderId, _) in _orderContract.Where(kv => kv.Value == id).ToList())
             {
-                if (book.Cancel(orderId) is { } qty)
+                if (_venues[_orderVenue[orderId]][id].Cancel(orderId) is { } qty)
                 {
                     Emit(new OrderExpired(orderId, qty));
                 }
 
                 _orderContract.Remove(orderId);
+                _orderVenue.Remove(orderId);
                 _clientFilled.Remove(orderId);
             }
 
@@ -299,7 +352,12 @@ public sealed partial class VenueShard : IAsyncDisposable
                 _botQuotes.Remove(key);
             }
 
-            _books.Remove(id);
+            foreach (var venue in _venues)
+            {
+                venue.Remove(id);
+            }
+
+            _tape.Remove(id);
             _theo.Remove(id);
             _dirty.Remove(id);
             _cache.Remove(id);
@@ -433,30 +491,32 @@ public sealed partial class VenueShard : IAsyncDisposable
             _theo[c.Id] = BlackScholes.Compute(c.Right, _spot, strike, t, _options.RiskFreeRate, _spec.DividendYield, vol);
             if (_options.EnableMarketMakers)
             {
-                Requote(book);
+                Requote(c.Id);
             }
 
             _dirty.Add(c.Id);
         }
     }
 
-    private void Requote(OrderBook book)
+    private void Requote(int contractId)
     {
-        var theo = (decimal)_theo[book.Contract.Id].Price;
-        var tick = book.Contract.TickSize;
+        var theo = (decimal)_theo[contractId].Price;
+        var tick = _books[contractId].Contract.TickSize;
 
         // Decide every maker's new quotes first, then pull and re-post them all, so makers never trade with each other.
-        var desired = new (decimal Bid, decimal Ask)[Makers.Length];
+        // Each maker quotes on its own exchange's book.
+        var desired = new (decimal Bid, decimal Ask)[_makers.Length];
         var changed = false;
-        for (var m = 0; m < Makers.Length; m++)
+        for (var m = 0; m < _makers.Length; m++)
         {
-            var p = Makers[m];
+            var (venue, p) = _makers[m];
+            var book = _venues[venue][contractId];
             var half = Math.Max(p.MinHalfSpread, theo * (decimal)p.HalfSpreadPct);
             var bid = Math.Floor((theo - half) / tick) * tick;
             var ask = Math.Max(Math.Ceiling((theo + half) / tick) * tick, bid + tick);
             desired[m] = (bid, ask);
 
-            if (!_botQuotes.TryGetValue((book.Contract.Id, m), out var q)
+            if (!_botQuotes.TryGetValue((contractId, m), out var q)
                 || q.BidPx != bid || q.AskPx != ask
                 || (q.Bid != 0 && !book.Contains(q.Bid) && bid >= tick) || (q.Ask != 0 && !book.Contains(q.Ask)))
             {
@@ -469,18 +529,20 @@ public sealed partial class VenueShard : IAsyncDisposable
             return;
         }
 
-        for (var m = 0; m < Makers.Length; m++)
+        for (var m = 0; m < _makers.Length; m++)
         {
-            if (_botQuotes.Remove((book.Contract.Id, m), out var q))
+            if (_botQuotes.Remove((contractId, m), out var q))
             {
+                var book = _venues[_makers[m].Venue][contractId];
                 RemoveBotOrder(book, q.Bid);
                 RemoveBotOrder(book, q.Ask);
             }
         }
 
-        for (var m = 0; m < Makers.Length; m++)
+        for (var m = 0; m < _makers.Length; m++)
         {
-            var p = Makers[m];
+            var (venue, p) = _makers[m];
+            var book = _venues[venue][contractId];
             var (bidPx, askPx) = desired[m];
             long bidId = 0, askId = 0;
             if (bidPx >= tick)
@@ -489,7 +551,7 @@ public sealed partial class VenueShard : IAsyncDisposable
             }
 
             askId = PostBotOrder(book, m, Side.Sell, askPx, _random.Next(p.MinSize, p.MaxSize + 1));
-            _botQuotes[(book.Contract.Id, m)] = (bidId, askId, bidPx, askPx);
+            _botQuotes[(contractId, m)] = (bidId, askId, bidPx, askPx);
         }
     }
 
@@ -527,10 +589,16 @@ public sealed partial class VenueShard : IAsyncDisposable
             return;
         }
 
-        var book = candidates[_random.Next(candidates.Count)];
+        var contractId = candidates[_random.Next(candidates.Count)].Contract.Id;
         var side = _random.Next(2) == 0 ? Side.Buy : Side.Sell;
-        var top = side == Side.Buy ? book.BestAsk : book.BestBid;
-        if (top is null)
+
+        // Takers go to the best displayed price, wherever it is, so a resting client order at the NBBO gets hit.
+        var book = _venues.Select(v => v[contractId])
+            .Where(b => (side == Side.Buy ? b.BestAsk : b.BestBid) is not null)
+            .OrderBy(b => side == Side.Buy ? b.BestAsk!.Value.Price : -b.BestBid!.Value.Price)
+            .FirstOrDefault();
+        var top = side == Side.Buy ? book?.BestAsk : book?.BestBid;
+        if (book is null || top is null)
         {
             return;
         }
@@ -545,12 +613,15 @@ public sealed partial class VenueShard : IAsyncDisposable
         _dirty.Add(book.Contract.Id);
         foreach (var f in fills)
         {
-            _cache.Publish(new TradePrint(book.Contract.Id, _spec.Symbol, f.Price, f.Quantity, aggressorSide, Now));
+            _cache.Publish(new TradePrint(book.Contract.Id, _spec.Symbol, f.Price, f.Quantity, aggressorSide, Now) { Exchange = book.Exchange });
+            var tape = _tape.GetValueOrDefault(book.Contract.Id);
+            _tape[book.Contract.Id] = (f.Price, tape.Volume + f.Quantity);
             if (f.RestingId > 0)
             {
                 if (book.Get(f.RestingId) is null)
                 {
                     _orderContract.Remove(f.RestingId);
+                    _orderVenue.Remove(f.RestingId);
                     _clientFilled.Remove(f.RestingId);
                 }
                 else
@@ -558,7 +629,7 @@ public sealed partial class VenueShard : IAsyncDisposable
                     _clientFilled[f.RestingId] = _clientFilled.GetValueOrDefault(f.RestingId) + f.Quantity;
                 }
 
-                Emit(new PassiveFill(f.RestingId, f.Price, f.Quantity));
+                Emit(new PassiveFill(f.RestingId, f.Price, f.Quantity) { Exchange = book.Exchange });
             }
             else if (book.Get(f.RestingId) is null)
             {
@@ -589,22 +660,28 @@ public sealed partial class VenueShard : IAsyncDisposable
         var executions = new List<SpreadExecution>();
         while (spread.Remaining > 0)
         {
+            // Each leg takes the best displayed price across the exchanges (bigger size breaks a tie).
             var tops = new List<(OrderBook Book, SpreadLeg Leg, Side Side, BookLevel Level)>();
             foreach (var leg in spread.Legs)
             {
-                if (!_books.TryGetValue(leg.ContractId, out var book))
+                if (!_books.ContainsKey(leg.ContractId))
                 {
                     return executions;
                 }
 
                 var side = spread.Side == Side.Buy ? leg.Side : (leg.Side == Side.Buy ? Side.Sell : Side.Buy);
-                var level = side == Side.Buy ? book.BestAsk : book.BestBid;
-                if (level is null)
+                var best = _venues.Select(v => v[leg.ContractId])
+                    .Select(b => (Book: b, Level: side == Side.Buy ? b.BestAsk : b.BestBid))
+                    .Where(x => x.Level is not null)
+                    .OrderBy(x => side == Side.Buy ? x.Level!.Value.Price : -x.Level!.Value.Price)
+                    .ThenByDescending(x => x.Level!.Value.Quantity)
+                    .FirstOrDefault();
+                if (best.Level is null)
                 {
                     return executions;
                 }
 
-                tops.Add((book, leg, side, level.Value));
+                tops.Add((best.Book, leg, side, best.Level.Value));
             }
 
             var strategyPrice = tops.Sum(t => (t.Leg.Side == Side.Buy ? 1 : -1) * t.Leg.Ratio * t.Level.Price);
@@ -621,7 +698,7 @@ public sealed partial class VenueShard : IAsyncDisposable
                 var qty = units * leg.Ratio;
                 var result = book.Submit(_nextLegOrderId--, side, OrderType.Limit, TimeInForce.ImmediateOrCancel, level.Price, qty);
                 AfterFills(book, side, result.Fills);
-                legFills.Add(new LegFill(leg.ContractId, side, level.Price, result.FilledQuantity));
+                legFills.Add(new LegFill(leg.ContractId, side, level.Price, result.FilledQuantity) { Exchange = book.Exchange });
             }
 
             spread.Remaining -= units;
@@ -645,16 +722,21 @@ public sealed partial class VenueShard : IAsyncDisposable
         var now = Now;
         foreach (var id in _dirty)
         {
-            var book = _books[id];
+            var books = _venues.Select(v => v[id]).ToList();
             var g = _theo.GetValueOrDefault(id);
-            var bid = book.BestBid;
-            var ask = book.BestAsk;
-            var c = book.Contract;
+            var bids = Merge(books, Side.Buy);
+            var asks = Merge(books, Side.Sell);
+            var c = books[0].Contract;
             var t = YearsToExpiry(c.Expiry);
             var iv = _surface.Vol(_spot, (double)c.Strike, t, _options.RiskFreeRate, _spec.DividendYield);
+            var tape = _tape.TryGetValue(id, out var last) ? last : ((decimal?)null, 0m);
             _cache.Publish(new QuoteSnapshot(id, g.Price, iv, g.Delta, g.Gamma, g.Vega / 100, g.Theta / 365,
-                bid?.Price, bid?.Quantity ?? 0, ask?.Price, ask?.Quantity ?? 0, book.LastPrice, book.Volume,
-                book.Depth(Side.Buy, 5), book.Depth(Side.Sell, 5), now));
+                bids.Count > 0 ? bids[0].Price : null, bids.Count > 0 ? bids[0].Quantity : 0,
+                asks.Count > 0 ? asks[0].Price : null, asks.Count > 0 ? asks[0].Quantity : 0, tape.Item1, tape.Item2, bids, asks, now)
+            {
+                Venues = [.. books.Select(b => new VenueQuote(b.Exchange, b.BestBid?.Price, b.BestBid?.Quantity ?? 0, b.BestAsk?.Price,
+                    b.BestAsk?.Quantity ?? 0))],
+            });
         }
 
         _dirty.Clear();
@@ -662,13 +744,33 @@ public sealed partial class VenueShard : IAsyncDisposable
 
     private void Emit(VenueEvent e) => _sink()?.OnVenueEvent(e);
 
+    private int IndexOf(string exchange)
+    {
+        for (var i = 0; i < _exchanges.Count; i++)
+        {
+            if (_exchanges[i].Code.Equals(exchange, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>Consolidated depth: every exchange's levels merged by price, best first, five levels.</summary>
+    private static List<BookLevel> Merge(List<OrderBook> books, Side side)
+    {
+        var levels = books.SelectMany(b => b.Depth(side, 5))
+            .GroupBy(l => l.Price)
+            .Select(g => new BookLevel(g.Key, g.Sum(l => l.Quantity), g.Sum(l => l.Orders)));
+        return [.. (side == Side.Buy ? levels.OrderByDescending(l => l.Price) : levels.OrderBy(l => l.Price)).Take(5)];
+    }
+
     private double YearsToExpiry(DateOnly expiry) =>
         Math.Max((InstrumentRegistry.CloseOf(expiry) - Now).TotalDays / 365.0, 1.0 / (365 * 24));
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Venue shard {Underlying} error")]
     private static partial void ShardError(ILogger logger, Exception ex, string underlying);
-
-    private sealed record MarketMakerProfile(string Name, double HalfSpreadPct, decimal MinHalfSpread, int MinSize, int MaxSize);
 }
 
 /// <summary>The simulated exchange: routes each order to the shard that owns its underlying.</summary>
@@ -706,8 +808,9 @@ public sealed class SimulatedVenue : IAsyncDisposable
 
     public VenueShard? Shard(string underlying) => _shards.GetValueOrDefault(underlying);
 
-    public void Submit(long orderId, OptionContract contract, Side side, OrderType type, TimeInForce tif, decimal? price, decimal quantity) =>
-        ShardFor(contract).Submit(orderId, contract.Id, side, type, tif, price, quantity);
+    public void Submit(long orderId, OptionContract contract, Side side, OrderType type, TimeInForce tif, decimal? price, decimal quantity,
+        string? destination = null) =>
+        ShardFor(contract).Submit(orderId, contract.Id, side, type, tif, price, quantity, destination);
 
     public void Cancel(long orderId, OptionContract contract) => ShardFor(contract).Cancel(orderId);
 

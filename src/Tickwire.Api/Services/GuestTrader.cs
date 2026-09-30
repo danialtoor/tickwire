@@ -76,7 +76,8 @@ public sealed class GuestTrader : NullFixApplication, IAsyncDisposable
 
     public string NewClOrdId() => _clOrdPrefix + Interlocked.Increment(ref _counter).ToString(CultureInfo.InvariantCulture);
 
-    public string SendNewOrder(OptionContract contract, Side side, OrderType type, TimeInForce tif, decimal? price, decimal quantity)
+    public string SendNewOrder(OptionContract contract, Side side, OrderType type, TimeInForce tif, decimal? price, decimal quantity,
+        string? destination = null)
     {
         var clOrdId = NewClOrdId();
         var b = new FixMessageBuilder(MsgTypes.NewOrderSingle);
@@ -92,6 +93,11 @@ public sealed class GuestTrader : NullFixApplication, IAsyncDisposable
         }
 
         b.Set(Tags.TimeInForce, (char)('0' + (int)tif)).Set(Tags.PositionEffect, 'O');
+        if (destination is { Length: > 0 } && !destination.Equals("SMART", StringComparison.OrdinalIgnoreCase))
+        {
+            b.Set(Tags.ExDestination, destination.ToUpperInvariant());
+        }
+
         Session.Send(b);
         return clOrdId;
     }

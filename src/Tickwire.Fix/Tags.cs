@@ -10,6 +10,8 @@ public static class Tags
     public const int BodyLength = 9;
     public const int CheckSum = 10;
     public const int ClOrdID = 11;
+    public const int Commission = 12;
+    public const int CommType = 13;
     public const int CumQty = 14;
     public const int Currency = 15;
     public const int EndSeqNo = 16;
@@ -18,6 +20,7 @@ public static class Tags
     public const int ExecRefID = 19;
     public const int HandlInst = 21;
     public const int SecurityIDSource = 22;
+    public const int LastMkt = 30;
     public const int LastPx = 31;
     public const int LastQty = 32;
     public const int MsgSeqNum = 34;
@@ -51,6 +54,7 @@ public static class Tags
     public const int RawData = 96;
     public const int PossResend = 97;
     public const int EncryptMethod = 98;
+    public const int ExDestination = 100;
     public const int CxlRejReason = 102;
     public const int OrdRejReason = 103;
     public const int HeartBtInt = 108;
@@ -94,6 +98,7 @@ public static class Tags
     public const int NextExpectedMsgSeqNum = 789;
     public const int OrdStatusReqID = 790;
     public const int CopyMsgIndicator = 797;
+    public const int LastLiquidityInd = 851;
 
     /// <summary>Tickwire custom tag (user-defined range): theoretical value of the option at the time of the report.</summary>
     public const int TheoValue = 20001;

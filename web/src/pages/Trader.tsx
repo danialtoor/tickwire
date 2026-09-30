@@ -312,9 +312,10 @@ export default function Trader() {
           {bottomTab === 'tape' && (
             <ul className="num scroll-thin max-h-[360px] overflow-auto text-[12px]">
               {tape.map((t, i) => (
-                <li key={`${t.time}${i}`} className="grid grid-cols-[90px_1fr_60px_50px] gap-2 border-b border-line/50 px-3 py-1">
+                <li key={`${t.time}${i}`} className="grid grid-cols-[90px_1fr_44px_60px_50px] gap-2 border-b border-line/50 px-3 py-1">
                   <span className="text-muted">{time(t.time).slice(0, 8)}</span>
                   <span className="font-sans">{t.display}</span>
+                  <span className="text-[11px] text-muted">{t.exchange ?? ''}</span>
                   <span className={t.side === 'buy' ? 'text-buy' : 'text-sell'}>{px(t.price)}</span>
                   <span className="text-right">{t.quantity}</span>
                 </li>

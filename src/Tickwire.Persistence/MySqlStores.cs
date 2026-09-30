@@ -232,16 +232,16 @@ public sealed partial class MySqlJournal : IOmsListener, IAsyncDisposable
         {
             e.ExecId, OrderKey = e.Order.Id, e.Order.ClientId, e.Order.ClOrdID, ExecType = ((char)e.ExecType).ToString(),
             OrdStatus = ((char)e.Order.Status).ToString(), e.LastQty, e.LastPx, e.Order.CumQty, e.Order.LeavesQty,
-            Text = Trim(e.Text, 512), e.TransactTime,
+            Text = Trim(e.Text ?? e.RouteReason, 512), e.LastMkt, e.Commission, e.TransactTime,
         }).ToArray();
         if (execRows.Length > 0)
         {
             await conn.ExecuteAsync(
                 """
                 INSERT IGNORE INTO executions (ExecId, OrderKey, ClientId, ClOrdID, ExecType, OrdStatus, LastQty, LastPx, CumQty,
-                  LeavesQty, Text, TransactTime)
+                  LeavesQty, Text, LastMkt, Commission, TransactTime)
                 VALUES (@ExecId, @OrderKey, @ClientId, @ClOrdID, @ExecType, @OrdStatus, @LastQty, @LastPx, @CumQty, @LeavesQty,
-                  @Text, @TransactTime)
+                  @Text, @LastMkt, @Commission, @TransactTime)
                 """, execRows, tx).ConfigureAwait(false);
         }
 

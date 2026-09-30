@@ -26,9 +26,16 @@ public sealed record ChainDto(string Underlying, DateOnly Expiry, double Spot, d
 public sealed record UnderlyingDto(string Symbol, string Name, double Price, double ChangePct, IReadOnlyList<DateOnly> Expiries);
 
 public sealed record BookDto(int ContractId, string Occ, string Display, string Underlying, DateOnly Expiry, decimal Strike, string Right,
-    double Theo, double Iv, decimal? Last, decimal Volume, IReadOnlyList<BookLevel> Bids, IReadOnlyList<BookLevel> Asks, DateTime Time);
+    double Theo, double Iv, decimal? Last, decimal Volume, IReadOnlyList<BookLevel> Bids, IReadOnlyList<BookLevel> Asks, DateTime Time)
+{
+    /// <summary>Each exchange's top of book; Bids/Asks are the consolidated depth.</summary>
+    public IReadOnlyList<VenueQuote> Venues { get; init; } = [];
+}
 
-public sealed record TradePrintDto(int ContractId, string Display, decimal Price, decimal Quantity, string Side, DateTime Time);
+public sealed record TradePrintDto(int ContractId, string Display, decimal Price, decimal Quantity, string Side, DateTime Time)
+{
+    public string Exchange { get; init; } = "TWX";
+}
 
 /// <summary>Read-side projections of market data for REST and the live hub.</summary>
 public sealed class MarketView(InstrumentRegistry instruments, MarketDataCache cache, TimeProvider time)
@@ -76,14 +83,17 @@ public sealed class MarketView(InstrumentRegistry instruments, MarketDataCache c
         var q = cache.Quote(contractId);
         return new BookDto(c.Id, c.OccSymbol, c.Display, c.Underlying, c.Expiry, c.Strike, c.Right == OptionRight.Call ? "C" : "P",
             Math.Round(q?.Theo ?? 0, 4), Math.Round(q?.ImpliedVol ?? 0, 4), q?.Last, q?.Volume ?? 0, q?.Bids ?? [], q?.Asks ?? [],
-            q?.Time ?? time.GetUtcNow().UtcDateTime);
+            q?.Time ?? time.GetUtcNow().UtcDateTime)
+        {
+            Venues = q?.Venues ?? [],
+        };
     }
 
     public IReadOnlyList<TradePrintDto> Tape(string? underlying, int max = 30) =>
     [
         .. cache.RecentPrints(underlying, max).Select(p => new TradePrintDto(p.ContractId,
             instruments.Get(p.ContractId)?.Display ?? p.ContractId.ToString(System.Globalization.CultureInfo.InvariantCulture), p.Price,
-            p.Quantity, p.AggressorSide == Side.Buy ? "buy" : "sell", p.Time)),
+            p.Quantity, p.AggressorSide == Side.Buy ? "buy" : "sell", p.Time) { Exchange = p.Exchange }),
     ];
 
     private QuoteDto? Quote(OptionContract? c)

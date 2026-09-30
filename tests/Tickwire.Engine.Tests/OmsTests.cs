@@ -35,7 +35,8 @@ public sealed class OmsTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var registry = InstrumentRegistry.Build(new DateOnly(2025, 3, 10));
-        _venue = new SimulatedVenue(registry, new VenueOptions { EnableNoiseTraders = false }, _cache,
+        // One exchange: these tests are about the OMS lifecycle and the primary makers, not routing (see RoutingTests).
+        _venue = new SimulatedVenue(registry, new VenueOptions { EnableNoiseTraders = false, Exchanges = [Exchanges.Primary] }, _cache,
             new FixedTime(new DateTime(2025, 3, 10, 15, 0, 0, DateTimeKind.Utc)));
         _oms = new OrderManager(new SimulatedVenueAdapter(_venue), _cache);
         _oms.AddListener(_listener);

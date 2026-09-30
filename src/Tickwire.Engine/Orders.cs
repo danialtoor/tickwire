@@ -117,6 +117,15 @@ public sealed class Order
     /// <summary>Legs of a multi-leg order; null for a single-contract order. <see cref="Contract"/> is then the first leg.</summary>
     public IReadOnlyList<OrderLeg>? Legs { get; init; }
 
+    /// <summary>ExDestination(100) the client asked for; null means smart routing.</summary>
+    public string? Destination { get; init; }
+
+    /// <summary>The exchange the order went to (known once the venue accepts it).</summary>
+    public string? Exchange { get; set; }
+
+    /// <summary>Accumulated exchange fees on this order's fills, in dollars (negative is a net rebate).</summary>
+    public decimal Fees { get; set; }
+
     public required string ClOrdID { get; set; }
     public string? OrigClOrdID { get; set; }
     public decimal? Price { get; set; }
@@ -153,7 +162,13 @@ public sealed class Order
     }
 
     public OrderView View() => new(Id, OrderId, ClientId, ClOrdID, OrigClOrdID, Contract, Side, OrdType, TimeInForce, Price, OrderQty,
-        CumQty, LeavesQty, Math.Round(AvgPx, 6), Status, Account, CreatedAt, UpdatedAt, Text) { Legs = Legs };
+        CumQty, LeavesQty, Math.Round(AvgPx, 6), Status, Account, CreatedAt, UpdatedAt, Text)
+    {
+        Legs = Legs,
+        Destination = Destination,
+        Exchange = Exchange,
+        Fees = Fees,
+    };
 }
 
 public sealed record PendingChange(bool IsCancel, string ClOrdID, string OrigClOrdID, decimal? NewPrice, decimal NewQty);
@@ -181,6 +196,10 @@ public sealed record OrderView(
     string? Text)
 {
     public IReadOnlyList<OrderLeg>? Legs { get; init; }
+
+    public string? Destination { get; init; }
+    public string? Exchange { get; init; }
+    public decimal Fees { get; init; }
 
     public bool IsMultileg => Legs is { Count: > 0 };
 
@@ -265,6 +284,15 @@ public sealed record ExecutionReportEvent(
 {
     /// <summary>For multi-leg orders: set on per-leg fill reports (MultiLegReportingType=2).</summary>
     public LegExecution? Leg { get; init; }
+
+    /// <summary>On fills: the exchange (LastMkt 30), whether it added or removed liquidity (851), and its fee (Commission 12).</summary>
+    public string? LastMkt { get; init; }
+
+    public Liquidity? LastLiquidity { get; init; }
+    public decimal? Commission { get; init; }
+
+    /// <summary>On the New report of a routed order: why it went where it did.</summary>
+    public string? RouteReason { get; init; }
 }
 
 public sealed record LegExecution(OptionContract Contract, Side Side, decimal Quantity, decimal Price);

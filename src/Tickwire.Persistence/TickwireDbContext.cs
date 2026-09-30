@@ -130,6 +130,11 @@ public sealed class ExecutionEntity
     public decimal CumQty { get; set; }
     public decimal LeavesQty { get; set; }
     public string? Text { get; set; }
+
+    /// <summary>Exchange the fill happened on (LastMkt 30) and its fee (negative = rebate).</summary>
+    public string? LastMkt { get; set; }
+
+    public decimal? Commission { get; set; }
     public DateTime TransactTime { get; set; }
 }
 
@@ -245,6 +250,8 @@ public sealed class TickwireDbContext(DbContextOptions<TickwireDbContext> option
             e.Property(x => x.LastPx).HasPrecision(18, 4);
             e.Property(x => x.CumQty).HasPrecision(18, 4);
             e.Property(x => x.LeavesQty).HasPrecision(18, 4);
+            e.Property(x => x.LastMkt).HasMaxLength(8);
+            e.Property(x => x.Commission).HasPrecision(18, 4);
             e.HasIndex(x => x.OrderKey);
         });
 

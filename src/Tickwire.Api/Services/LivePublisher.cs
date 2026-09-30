@@ -33,6 +33,12 @@ public sealed record BlotterRowDto(
     /// <summary>Legs of a spread order; null for single-contract orders.</summary>
     public IReadOnlyList<BlotterLegDto>? Legs { get; init; }
 
+    /// <summary>Where the order went (SMART for spreads, whose legs route separately), what the client asked for, and fees so far.</summary>
+    public string? Exchange { get; init; }
+
+    public string? Destination { get; init; }
+    public decimal Fees { get; init; }
+
     public static BlotterRowDto From(OrderView o, ExecType lastExecType = ExecType.OrderStatus, decimal lastQty = 0, decimal lastPx = 0,
         string? text = null) =>
         new(o.Id == 0 ? $"REJ-{o.ClOrdID}" : o.OrderId, o.ClOrdID, o.OrigClOrdID, o.Contract.Id,
@@ -47,6 +53,9 @@ public sealed record BlotterRowDto(
         {
             Legs = o.Legs?.Select(l => new BlotterLegDto(l.Contract.Id, l.Contract.Display, l.Ratio, l.Side == Tickwire.Venue.Side.Buy ? "Buy" : "Sell"))
                 .ToList(),
+            Exchange = o.Exchange,
+            Destination = o.Destination,
+            Fees = o.Fees,
         };
 }
 

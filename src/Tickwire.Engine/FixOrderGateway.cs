@@ -143,11 +143,20 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
             return;
         }
 
+        var destination = m.GetString(Tags.ExDestination);
+        if (destination is not null && Exchanges.Find(destination) is null)
+        {
+            BusinessReject(session, m, BusinessRejectReason.Other,
+                $"Unknown ExDestination(100)={destination}; use {string.Join(", ", Exchanges.All.Select(e => e.Code))} or omit it for smart routing");
+            return;
+        }
+
         var contract = ResolveInstrument(m, out var error);
         _oms.Submit(new NewOrderRequest(client, m.GetString(Tags.ClOrdID)!, contract, error, side.Value, type.Value, tif.Value,
             m.GetDecimal(Tags.Price), m.GetDecimal(Tags.OrderQty) ?? 0, m.GetString(Tags.Account), received)
         {
             RawSymbol = m.GetString(Tags.Symbol),
+            Destination = Exchanges.Find(destination)?.Code,
         });
     }
 
@@ -367,8 +376,9 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
             er.Set(Tags.MultiLegReportingType, '2');
             AppendInstrument(er, leg.Contract);
             er.Set(Tags.Side, leg.Side == Side.Buy ? '1' : '2').Set(Tags.OrderQty, leg.Quantity).Set(Tags.OrdType, '2')
-                .Set(Tags.LastQty, leg.Quantity).Set(Tags.LastPx, leg.Price)
-                .Set(Tags.LeavesQty, o.LeavesQty).Set(Tags.CumQty, o.CumQty).Set(Tags.AvgPx, o.AvgPx)
+                .Set(Tags.LastQty, leg.Quantity).Set(Tags.LastPx, leg.Price);
+            AppendFillVenue(er, report);
+            er.Set(Tags.LeavesQty, o.LeavesQty).Set(Tags.CumQty, o.CumQty).Set(Tags.AvgPx, o.AvgPx)
                 .SetUtcTimestamp(Tags.TransactTime, report.TransactTime);
             session.Send(er);
             return;
@@ -391,17 +401,18 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
             er.Set(Tags.Price, px);
         }
 
-        er.Set(Tags.TimeInForce, (char)('0' + (int)o.TimeInForce));
+        er.Set(Tags.TimeInForce, (char)('0' + (int)o.TimeInForce)); // ExDestination(100) isn't an ExecutionReport field in 4.4
         if (report.ExecType == ExecType.Trade)
         {
             er.Set(Tags.LastQty, report.LastQty).Set(Tags.LastPx, report.LastPx);
+            AppendFillVenue(er, report);
         }
 
         er.Set(Tags.LeavesQty, o.LeavesQty)
             .Set(Tags.CumQty, o.CumQty)
             .Set(Tags.AvgPx, o.AvgPx)
             .SetUtcTimestamp(Tags.TransactTime, report.TransactTime)
-            .Set(Tags.Text, report.Text ?? (report.ExecType == ExecType.Rejected ? o.Text : null));
+            .Set(Tags.Text, report.Text ?? report.RouteReason ?? (report.ExecType == ExecType.Rejected ? o.Text : null));
 
         if (o.IsMultileg)
         {
@@ -454,6 +465,21 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
                 .Set(Tags.LegStrikePrice, l.Contract.Strike)
                 .Set(Tags.LegRatioQty, l.Ratio)
                 .Set(Tags.LegSide, l.Side == Side.Buy ? '1' : '2');
+        }
+    }
+
+    /// <summary>LastMkt(30), Commission(12)/CommType(13)=3 (absolute, negative for a rebate) and LastLiquidityInd(851).</summary>
+    private static void AppendFillVenue(FixMessageBuilder b, ExecutionReportEvent report)
+    {
+        b.Set(Tags.LastMkt, report.LastMkt);
+        if (report.Commission is { } fee)
+        {
+            b.Set(Tags.Commission, fee).Set(Tags.CommType, '3');
+        }
+
+        if (report.LastLiquidity is { } liquidity)
+        {
+            b.Set(Tags.LastLiquidityInd, (int)liquidity);
         }
     }
 

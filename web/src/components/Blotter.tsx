@@ -56,6 +56,9 @@ export function Blotter({ rows, token, selectedClOrdId, onSelect, onAction }: Pr
             <th>Filled</th>
             <th className="hidden text-right 2xl:table-cell">Avg</th>
             <th>Status</th>
+            <th className="hidden xl:table-cell" title="Exchange the order went to (LastMkt on fills); fees are per contract, negative is a rebate">
+              Venue
+            </th>
             <th className="hidden 2xl:table-cell" title="What the FIX client rebuilt from the ExecutionReports it received">Client</th>
             <th />
           </tr>
@@ -126,6 +129,15 @@ export function Blotter({ rows, token, selectedClOrdId, onSelect, onAction }: Pr
                     {label(o.status)}
                   </span>
                   {clientView && !inSync && <span className="ml-1 text-[10.5px] text-warn" title="The FIX client hasn't seen every report yet">…</span>}
+                </td>
+                <td className="num hidden px-2 py-1.5 text-[11px] xl:table-cell">
+                  <span className="text-ink-2">{o.exchange ?? '—'}</span>
+                  {o.destination && <span className="ml-1 text-muted" title="Directed with ExDestination(100)">dir</span>}
+                  {!!o.fees && (
+                    <span className={cn('ml-1.5', o.fees < 0 ? 'text-buy' : 'text-muted')} title="Exchange fees so far">
+                      {o.fees < 0 ? '+' : '−'}${Math.abs(o.fees).toFixed(2)}
+                    </span>
+                  )}
                 </td>
                 <td className="hidden px-2 py-1.5 text-[11px] 2xl:table-cell">
                   {clientView ? (

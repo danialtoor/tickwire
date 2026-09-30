@@ -8,6 +8,11 @@
   `GET /api/positions`, and `-MaxAbsDelta`/`-MaxAbsVega` on `Set-RiskLimit`.
 - **Drop copy sessions**: receive-only FIX sessions (`DC-XXXXXX`) that get every ExecutionReport for the account with
   `CopyMsgIndicator(797)=Y`; orders sent on them are rejected with 35=j. Choose "Drop copy" on the Connect page.
+- **Smart order routing**: three simulated exchanges (TWX, NOVA, ARGO) with their own books, market makers and
+  maker/taker fees. Orders route to the best all-in price, or rest where the rebate is best; ExDestination(100)
+  directs them. Fills carry LastMkt(30), Commission(12)/CommType(13) and LastLiquidityInd(851). Spread legs take the
+  best exchange per leg. Consolidated NBBO and per-exchange quotes in the book, a route picker in the ticket, venue
+  and fees in the blotter.
 
 ## 1.1.0 (2026-09-30)
 

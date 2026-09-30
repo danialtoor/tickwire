@@ -42,9 +42,16 @@ public sealed class OrderBook
     private readonly Dictionary<long, LinkedListNode<RestingOrder>> _index = [];
     private long _nextPriority;
 
-    public OrderBook(OptionContract contract) => Contract = contract;
+    public OrderBook(OptionContract contract, string exchange = "TWX")
+    {
+        Contract = contract;
+        Exchange = exchange;
+    }
 
     public OptionContract Contract { get; }
+
+    /// <summary>Code of the exchange this book belongs to (each exchange has its own book per contract).</summary>
+    public string Exchange { get; }
     public int OrderCount => _index.Count;
     public decimal? LastPrice { get; private set; }
     public decimal LastQuantity { get; private set; }
