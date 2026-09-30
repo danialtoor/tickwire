@@ -96,12 +96,37 @@ public sealed class GuestTrader : NullFixApplication, IAsyncDisposable
         return clOrdId;
     }
 
+    /// <summary>NewOrderMultileg(AB): a net-priced limit order on 2-4 legs, legs in the NoLegs(555) group.</summary>
+    public string SendMultileg(IReadOnlyList<OrderLeg> legs, Side side, TimeInForce tif, decimal price, decimal quantity)
+    {
+        var clOrdId = NewClOrdId();
+        var b = new FixMessageBuilder(MsgTypes.NewOrderMultileg);
+        b.Set(Tags.ClOrdID, clOrdId).Set(Tags.Account, Account.ClientId).Set(Tags.Side, side == Side.Buy ? '1' : '2')
+            .Set(Tags.Symbol, legs[0].Contract.Underlying);
+        FixOrderGateway.AppendLegs(b, legs);
+        b.SetUtcTimestamp(Tags.TransactTime, Now)
+            .Set(Tags.OrderQty, quantity)
+            .Set(Tags.OrdType, '2')
+            .Set(Tags.Price, price)
+            .Set(Tags.TimeInForce, (char)('0' + (int)tif));
+        Session.Send(b);
+        return clOrdId;
+    }
+
     public string SendCancel(OrderView order)
     {
         var clOrdId = NewClOrdId();
         var b = new FixMessageBuilder(MsgTypes.OrderCancelRequest);
         b.Set(Tags.OrigClOrdID, order.ClOrdID).Set(Tags.OrderID, order.OrderId).Set(Tags.ClOrdID, clOrdId);
-        AppendInstrument(b, order.Contract);
+        if (order.IsMultileg)
+        {
+            b.Set(Tags.Symbol, order.Contract.Underlying);
+        }
+        else
+        {
+            AppendInstrument(b, order.Contract);
+        }
+
         b.Set(Tags.Side, order.Side == Side.Buy ? '1' : '2').SetUtcTimestamp(Tags.TransactTime, Now).Set(Tags.OrderQty, order.OrderQty);
         Session.Send(b);
         return clOrdId;

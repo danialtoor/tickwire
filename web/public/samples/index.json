@@ -18,5 +18,9 @@
   {
     "file": "05-orders-not-acking.log",
     "description": "\"My orders aren't acking\": a session reject, a silent venue and a heartbeat timeout."
+  },
+  {
+    "file": "06-clean-vertical-spread.log",
+    "description": "A clean NewOrderMultileg vertical: strategy reports plus leg fills. Nothing should be flagged."
   }
 ]

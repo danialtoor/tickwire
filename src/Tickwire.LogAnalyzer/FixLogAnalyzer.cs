@@ -369,7 +369,7 @@ public static partial class FixLogAnalyzer
             var line = messages[idx].Line;
             switch (m.MsgType)
             {
-                case MsgTypes.NewOrderSingle when clOrdId is not null:
+                case MsgTypes.NewOrderSingle or MsgTypes.NewOrderMultileg when clOrdId is not null:
                 {
                     if (m.PossDupFlag && byClOrdId.ContainsKey(clOrdId))
                     {
@@ -383,7 +383,9 @@ public static partial class FixLogAnalyzer
                     o.Side = m.GetChar(Tags.Side) switch { '1' => "Buy", '2' => "Sell", var c => c?.ToString() };
                     o.OrderQty = m.GetDecimal(Tags.OrderQty);
                     o.Price = m.GetDecimal(Tags.Price);
-                    o.Events.Add(Event(idx, m, $"NewOrderSingle {o.Side} {o.OrderQty} {o.Symbol}{(o.Price is { } p ? $" @ {p}" : " MKT")}"));
+                    o.Events.Add(Event(idx, m, m.MsgType == MsgTypes.NewOrderMultileg
+                        ? $"NewOrderMultileg {o.Side} {o.OrderQty} {o.Symbol} {m.GetInt(Tags.NoLegs)}-leg @ {o.Price} net"
+                        : $"NewOrderSingle {o.Side} {o.OrderQty} {o.Symbol}{(o.Price is { } p ? $" @ {p}" : " MKT")}"));
                     break;
                 }
 
@@ -452,6 +454,14 @@ public static partial class FixLogAnalyzer
                         }
 
                         break; // resent copy of a report we already applied
+                    }
+
+                    if (m.GetChar(Tags.MultiLegReportingType) == '2')
+                    {
+                        // A leg fill: leg quantity and price, but the strategy's CumQty/LeavesQty. Not a state report.
+                        o.HasReport = true;
+                        o.Events.Add(Event(idx, m, $"Leg fill {(m.GetChar(Tags.Side) == '1' ? "buy" : "sell")} {m.GetString(Tags.LastQty)} {m.GetString(Tags.Symbol)} {m.GetString(Tags.StrikePrice)} @ {m.GetString(Tags.LastPx)}"));
+                        break;
                     }
 
                     ApplyReport(o, idx, m, line, diags);

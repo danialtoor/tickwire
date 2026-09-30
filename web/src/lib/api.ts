@@ -90,6 +90,10 @@ export const api = {
   orders: (token: string) => request<OrderRow[]>('/api/orders', { token }),
   placeOrder: (token: string, body: { contractId: number; side: string; type: string; tif: string; price: number | null; quantity: number }) =>
     request<{ clOrdID: string }>('/api/orders', { method: 'POST', token, body: JSON.stringify(body) }),
+  placeSpread: (
+    token: string,
+    body: { legs: { contractId: number; ratio: number; side: 'buy' | 'sell' }[]; side: string; tif: string; price: number; quantity: number },
+  ) => request<{ clOrdID: string }>('/api/orders/spread', { method: 'POST', token, body: JSON.stringify(body) }),
   cancelOrder: (token: string, orderId: string) => request<{ clOrdID: string }>(`/api/orders/${orderId}/cancel`, { method: 'POST', token }),
   replaceOrder: (token: string, orderId: string, price: number | null, quantity: number) =>
     request<{ clOrdID: string }>(`/api/orders/${orderId}/replace`, { method: 'POST', token, body: JSON.stringify({ price, quantity }) }),

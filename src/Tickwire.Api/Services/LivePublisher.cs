@@ -30,18 +30,27 @@ public sealed record BlotterRowDto(
     decimal LastQty,
     decimal LastPx)
 {
+    /// <summary>Legs of a spread order; null for single-contract orders.</summary>
+    public IReadOnlyList<BlotterLegDto>? Legs { get; init; }
+
     public static BlotterRowDto From(OrderView o, ExecType lastExecType = ExecType.OrderStatus, decimal lastQty = 0, decimal lastPx = 0,
         string? text = null) =>
         new(o.Id == 0 ? $"REJ-{o.ClOrdID}" : o.OrderId, o.ClOrdID, o.OrigClOrdID, o.Contract.Id,
-            o.Contract.Id == 0 ? o.Contract.Underlying : o.Contract.Display, o.Contract.OccSymbol,
+            o.Contract.Id == 0 ? o.Contract.Underlying : o.Display, o.IsMultileg ? "" : o.Contract.OccSymbol,
             o.Side == Tickwire.Venue.Side.Buy ? "Buy" : "Sell", o.OrdType.ToString(), o.TimeInForce switch
             {
                 TimeInForce.ImmediateOrCancel => "IOC",
                 TimeInForce.FillOrKill => "FOK",
                 _ => "Day",
             }, o.Price, o.OrderQty, o.CumQty, o.LeavesQty, o.AvgPx, o.Status.ToString(), text ?? o.Text, o.CreatedAt, o.UpdatedAt,
-            lastExecType.ToString(), lastQty, lastPx);
+            lastExecType.ToString(), lastQty, lastPx)
+        {
+            Legs = o.Legs?.Select(l => new BlotterLegDto(l.Contract.Id, l.Contract.Display, l.Ratio, l.Side == Tickwire.Venue.Side.Buy ? "Buy" : "Sell"))
+                .ToList(),
+        };
 }
+
+public sealed record BlotterLegDto(int ContractId, string Display, int Ratio, string Side);
 
 public sealed record SessionSummaryDto(
     string Key,

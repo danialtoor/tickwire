@@ -78,6 +78,19 @@ public static class Tags
     public const int Username = 553;
     public const int Password = 554;
     public const int LastMsgSeqNumProcessed = 369;
+    public const int MultiLegReportingType = 442;
+    public const int NoLegs = 555;
+    public const int LegPositionEffect = 564;
+    public const int LegSymbol = 600;
+    public const int LegSecurityID = 602;
+    public const int LegSecurityIDSource = 603;
+    public const int LegCFICode = 608;
+    public const int LegSecurityType = 609;
+    public const int LegMaturityDate = 611;
+    public const int LegStrikePrice = 612;
+    public const int LegRatioQty = 623;
+    public const int LegSide = 624;
+    public const int LegLastPx = 637;
     public const int NextExpectedMsgSeqNum = 789;
     public const int OrdStatusReqID = 790;
 

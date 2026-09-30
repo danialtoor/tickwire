@@ -168,6 +168,80 @@ public static class PreTradeRisk
 
         return null;
     }
+
+    /// <summary>
+    /// Checks for multi-leg orders: 2 to 4 legs on one underlying, whole ratios 1-10, limit orders only, IOC or Day.
+    /// Notional is the gross theo value of all legs; the price band is measured against the strategy's theo.
+    /// </summary>
+    public static RiskResult? CheckSpread(RiskLimits limits, IReadOnlyList<OrderLeg> legs, TimeInForce tif, decimal? price, decimal quantity,
+        int openOrders, Func<int, double?> theoOf)
+    {
+        if (legs.Count is < 2 or > 4)
+        {
+            return new(RiskRejectCode.InvalidQuantity, "Multi-leg orders need 2 to 4 legs", OrdRejReason.Other);
+        }
+
+        if (legs.Select(l => l.Contract.Underlying).Distinct().Count() > 1)
+        {
+            return new(RiskRejectCode.SymbolNotAllowed, "All legs must be on the same underlying", OrdRejReason.Other);
+        }
+
+        if (legs.Select(l => l.Contract.Id).Distinct().Count() != legs.Count)
+        {
+            return new(RiskRejectCode.InvalidQuantity, "The same contract appears in more than one leg", OrdRejReason.Other);
+        }
+
+        if (legs.Any(l => l.Ratio is < 1 or > 10))
+        {
+            return new(RiskRejectCode.InvalidQuantity, "Leg ratios must be whole numbers from 1 to 10", OrdRejReason.Other);
+        }
+
+        if (tif == TimeInForce.FillOrKill)
+        {
+            return new(RiskRejectCode.TimeInForceNotAllowed, "Fill-or-kill isn't supported for multi-leg orders; use IOC", OrdRejReason.BrokerOption);
+        }
+
+        if (price is null)
+        {
+            return new(RiskRejectCode.InvalidPrice, "Multi-leg orders need a net limit price (Price 44)", OrdRejReason.Other);
+        }
+
+        if (price % 0.01m != 0)
+        {
+            return new(RiskRejectCode.InvalidPrice, $"Net price {price} is not a multiple of 0.01", OrdRejReason.Other);
+        }
+
+        var first = Check(limits, legs[0].Contract, OrderType.Limit, tif, 0.01m, quantity, openOrders, null, null);
+        if (first is { Code: not RiskRejectCode.MaxNotional and not RiskRejectCode.PriceBand } r)
+        {
+            return r; // allowed products, TIF, quantity and open-order checks apply to the strategy as a whole
+        }
+
+        var theos = legs.Select(l => theoOf(l.Contract.Id)).ToList();
+        if (theos.Any(t => t is null))
+        {
+            return new(RiskRejectCode.NoMarketData, "No market data for one of the legs", OrdRejReason.Other);
+        }
+
+        var gross = legs.Zip(theos, (l, t) => (decimal)t!.Value * l.Ratio).Sum();
+        var notional = gross * quantity * OptionContract.Multiplier;
+        if (notional > limits.MaxNotional)
+        {
+            return new(RiskRejectCode.MaxNotional, $"Gross leg notional ${notional:N0} exceeds max notional ${limits.MaxNotional:N0}",
+                OrdRejReason.OrderExceedsLimit);
+        }
+
+        var strategyTheo = legs.Zip(theos, (l, t) => (l.Side == Side.Buy ? 1 : -1) * l.Ratio * (decimal)t!.Value).Sum();
+        var band = Math.Max(gross * limits.PriceBandPct, limits.PriceBandMinAbs);
+        if (Math.Abs(price.Value - strategyTheo) > band)
+        {
+            return new(RiskRejectCode.PriceBand,
+                $"Net price {price:0.00} is outside the band of strategy theo {strategyTheo:0.00} ± {band:0.00} (fat-finger check)",
+                OrdRejReason.Other);
+        }
+
+        return null;
+    }
 }
 
 /// <summary>Sliding one-second window of message timestamps per client.</summary>

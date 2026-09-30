@@ -506,7 +506,7 @@ function analyzeOrders(messages: LogMessage[], parsed: Map<number, ParsedMessage
     const orig = m.get(41)
     const line = messages[idx].line
     const possDup = m.get(43) === 'Y'
-    if (m.msgType === 'D' && cl) {
+    if ((m.msgType === 'D' || m.msgType === 'AB') && cl) {
       if (possDup && byClOrdId.has(cl)) continue
       const o = get(cl)
       o.hasNewOrder = true
@@ -515,7 +515,15 @@ function analyzeOrders(messages: LogMessage[], parsed: Map<number, ParsedMessage
       o.side = m.get(54) === '1' ? 'Buy' : m.get(54) === '2' ? 'Sell' : (m.get(54) ?? null)
       o.orderQty = num(m, 38)
       o.price = num(m, 44)
-      o.events.push(event(idx, m, `NewOrderSingle ${o.side} ${o.orderQty} ${o.symbol ?? ''}${o.price !== null ? ` @ ${o.price}` : ' MKT'}`))
+      o.events.push(
+        event(
+          idx,
+          m,
+          m.msgType === 'AB'
+            ? `NewOrderMultileg ${o.side} ${o.orderQty} ${o.symbol ?? ''} ${m.get(555)}-leg @ ${o.price} net`
+            : `NewOrderSingle ${o.side} ${o.orderQty} ${o.symbol ?? ''}${o.price !== null ? ` @ ${o.price}` : ' MKT'}`,
+        ),
+      )
     } else if ((m.msgType === 'F' || m.msgType === 'G') && cl) {
       const isReplace = m.msgType === 'G'
       let o = orig ? byClOrdId.get(orig) : undefined
@@ -562,6 +570,12 @@ function analyzeOrders(messages: LogMessage[], parsed: Map<number, ParsedMessage
         continue
       }
       if (execId) execIds.add(execId)
+      if (m.get(442) === '2') {
+        // A leg fill: leg quantity and price, but the strategy's CumQty/LeavesQty. Not a state report.
+        o.hasReport = true
+        o.events.push(event(idx, m, `Leg fill ${m.get(54) === '1' ? 'buy' : 'sell'} ${m.get(32)} ${m.get(55)} ${m.get(202)} @ ${m.get(31)}`))
+        continue
+      }
       applyReport(o, idx, m, line, diags)
     } else if (m.msgType === '9') {
       const o = (cl && byClOrdId.get(cl)) || (orig && byClOrdId.get(orig)) || undefined

@@ -22,6 +22,19 @@ public sealed record NewOrderRequest(
     public string? RawSymbol { get; init; }
 }
 
+/// <summary>A multi-leg (spread) order: NewOrderMultileg(AB). Price is the net strategy price per unit.</summary>
+public sealed record NewSpreadRequest(
+    ClientAccount Client,
+    string ClOrdID,
+    IReadOnlyList<OrderLeg> Legs,
+    string? InstrumentError,
+    Side Side,
+    TimeInForce TimeInForce,
+    decimal? Price,
+    decimal Quantity,
+    string? Account,
+    long ReceivedTimestamp);
+
 public sealed record CancelOrderRequest(ClientAccount Client, string ClOrdID, string OrigClOrdID, long ReceivedTimestamp);
 
 public sealed record ReplaceOrderRequest(ClientAccount Client, string ClOrdID, string OrigClOrdID, decimal? Price, decimal Quantity,
@@ -49,6 +62,8 @@ public interface IExecutionVenue
     void Cancel(long orderId, OptionContract contract);
 
     void Replace(long orderId, OptionContract contract, decimal price, decimal newTotalQuantity);
+
+    void SubmitSpread(long orderId, IReadOnlyList<OrderLeg> legs, Side side, TimeInForce tif, decimal limit, decimal units);
 }
 
 public sealed class SimulatedVenueAdapter(SimulatedVenue venue) : IExecutionVenue
@@ -60,6 +75,10 @@ public sealed class SimulatedVenueAdapter(SimulatedVenue venue) : IExecutionVenu
 
     public void Replace(long orderId, OptionContract contract, decimal price, decimal newTotalQuantity) =>
         venue.Replace(orderId, contract, price, newTotalQuantity);
+
+    public void SubmitSpread(long orderId, IReadOnlyList<OrderLeg> legs, Side side, TimeInForce tif, decimal limit, decimal units) =>
+        venue.SubmitSpread(orderId, legs[0].Contract.Underlying, [.. legs.Select(l => new SpreadLeg(l.Contract.Id, l.Ratio, l.Side))], side,
+            tif, limit, units);
 }
 
 /// <summary>
@@ -108,6 +127,8 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
     public void Start() => _loop ??= Task.Run(RunAsync);
 
     public void Submit(NewOrderRequest request) => _inbox.Writer.TryWrite(request);
+
+    public void Submit(NewSpreadRequest request) => _inbox.Writer.TryWrite(request);
 
     public void Submit(CancelOrderRequest request) => _inbox.Writer.TryWrite(request);
 
@@ -212,6 +233,9 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
             case NewOrderRequest r:
                 OnNewOrder(r);
                 break;
+            case NewSpreadRequest r:
+                OnNewSpread(r);
+                break;
             case CancelOrderRequest r:
                 OnCancel(r);
                 break;
@@ -241,6 +265,16 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
                 break;
             case OrderExpired e:
                 OnExpired(e);
+                break;
+            case SpreadSubmitted e:
+                OnSpreadSubmitted(e);
+                break;
+            case SpreadFilled e:
+                if (_orders.TryGetValue(e.OrderId, out var spreadOrder) && spreadOrder.IsOpen)
+                {
+                    ApplySpreadExecution(spreadOrder, e.Execution);
+                }
+
                 break;
             case Invoke i:
                 i.Action();
@@ -313,6 +347,111 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
         _venue.Submit(order.Id, order.Contract, order.Side, order.OrdType, order.TimeInForce, order.Price, order.OrderQty);
     }
 
+    private void OnNewSpread(NewSpreadRequest r)
+    {
+        var client = r.Client;
+        var limits = client.Limits;
+        RiskResult? reject = null;
+        if (_globalKillSwitch || client.KillSwitch)
+        {
+            reject = new(RiskRejectCode.KillSwitch, "Kill switch engaged: new orders are blocked", OrdRejReason.BrokerOption);
+        }
+        else if (!_throttle.TryAcquire(client.ClientId, limits.MaxMessagesPerSecond))
+        {
+            reject = new(RiskRejectCode.Throttle, $"Message rate above {limits.MaxMessagesPerSecond}/s", OrdRejReason.BrokerOption);
+        }
+        else if (_byClOrdId.ContainsKey((client.ClientId, r.ClOrdID)))
+        {
+            reject = new(RiskRejectCode.DuplicateClOrdID, $"Duplicate ClOrdID {r.ClOrdID}", OrdRejReason.DuplicateOrder);
+        }
+        else if (r.InstrumentError is not null)
+        {
+            reject = new(RiskRejectCode.UnknownInstrument, r.InstrumentError, OrdRejReason.UnknownSymbol);
+        }
+        else
+        {
+            reject = PreTradeRisk.CheckSpread(limits, r.Legs, r.TimeInForce, r.Price, r.Quantity, OpenCount(client.ClientId),
+                id => _marketData.Quote(id)?.Theo);
+        }
+
+        if (reject is { } rr)
+        {
+            foreach (var l in _listeners)
+            {
+                l.OnRiskReject(client.ClientId, rr.Code, rr.Text);
+            }
+
+            var first = r.Legs.Count > 0 ? r.Legs[0].Contract : new OptionContract(0, "UNKNOWN", DateOnly.MinValue, Pricing.OptionRight.Call, 0);
+            var view = new OrderView(0, "NONE", client.ClientId, r.ClOrdID, null, first, r.Side, OrderType.Limit, r.TimeInForce, r.Price,
+                r.Quantity, 0, 0, 0, OrdStatus.Rejected, r.Account, Now, Now, rr.Text) { Legs = r.Legs.Count > 0 ? r.Legs : null };
+            Emit(new ExecutionReportEvent(view, ExecType.Rejected, NextExecId(), 0, 0, rr.Text, rr.FixReason, Now, r.ReceivedTimestamp));
+            return;
+        }
+
+        var order = new Order
+        {
+            Id = ++_nextOrderId,
+            ClientId = client.ClientId,
+            ClOrdID = r.ClOrdID,
+            Contract = r.Legs[0].Contract,
+            Legs = r.Legs,
+            Side = r.Side,
+            OrdType = OrderType.Limit,
+            TimeInForce = r.TimeInForce,
+            Price = r.Price,
+            OrderQty = r.Quantity,
+            LeavesQty = r.Quantity,
+            Account = r.Account,
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        };
+        _orders[order.Id] = order;
+        _byClOrdId[(client.ClientId, order.ClOrdID)] = order;
+        OpenSet(client.ClientId).Add(order.Id);
+        _pendingReceived[order.Id] = r.ReceivedTimestamp;
+        Report(order, ExecType.PendingNew);
+        _venue.SubmitSpread(order.Id, r.Legs, r.Side, r.TimeInForce, r.Price!.Value, r.Quantity);
+    }
+
+    private void OnSpreadSubmitted(SpreadSubmitted e)
+    {
+        if (!_orders.TryGetValue(e.OrderId, out var order))
+        {
+            return;
+        }
+
+        _pendingReceived.Remove(order.Id, out var received);
+        order.Apply(OrderEvent.Accept);
+        Report(order, ExecType.New, received: received);
+        foreach (var execution in e.Executions)
+        {
+            ApplySpreadExecution(order, execution);
+        }
+
+        if (e.CanceledUnits > 0 && order.IsOpen)
+        {
+            order.LeavesQty = 0;
+            order.Apply(OrderEvent.Cancel);
+            Report(order, ExecType.Canceled, text: e.CancelReason);
+        }
+    }
+
+    /// <summary>One strategy-level report (MultiLegReportingType=3) and one report per leg trade (=2).</summary>
+    private void ApplySpreadExecution(Order order, SpreadExecution execution)
+    {
+        order.AddFill(execution.StrategyPrice, execution.Units);
+        Report(order, ExecType.Trade, lastQty: execution.Units, lastPx: execution.StrategyPrice);
+        foreach (var leg in execution.Legs)
+        {
+            var contract = order.Legs!.First(l => l.Contract.Id == leg.ContractId).Contract;
+            var view = order.View();
+            Emit(new ExecutionReportEvent(view, ExecType.Trade, NextExecId(), leg.Quantity, leg.Price, null, null, Now, null)
+            {
+                Leg = new LegExecution(contract, leg.Side, leg.Quantity, leg.Price),
+            });
+        }
+    }
+
     private void RejectNew(NewOrderRequest r, RiskResult reject)
     {
         foreach (var l in _listeners)
@@ -359,6 +498,13 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
 
         if (!TryFindForChange(r.Client.ClientId, r.ClOrdID, r.OrigClOrdID, true, out var order))
         {
+            return;
+        }
+
+        if (order.Legs is not null)
+        {
+            CancelReject(order.ClientId, r.ClOrdID, r.OrigClOrdID, order, CxlRejReason.Other, true,
+                "Multi-leg orders can't be replaced; cancel and send a new NewOrderMultileg");
             return;
         }
 

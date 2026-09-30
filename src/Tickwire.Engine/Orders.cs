@@ -114,6 +114,9 @@ public sealed class Order
     public string? Account { get; init; }
     public required DateTime CreatedAt { get; init; }
 
+    /// <summary>Legs of a multi-leg order; null for a single-contract order. <see cref="Contract"/> is then the first leg.</summary>
+    public IReadOnlyList<OrderLeg>? Legs { get; init; }
+
     public required string ClOrdID { get; set; }
     public string? OrigClOrdID { get; set; }
     public decimal? Price { get; set; }
@@ -150,7 +153,7 @@ public sealed class Order
     }
 
     public OrderView View() => new(Id, OrderId, ClientId, ClOrdID, OrigClOrdID, Contract, Side, OrdType, TimeInForce, Price, OrderQty,
-        CumQty, LeavesQty, Math.Round(AvgPx, 6), Status, Account, CreatedAt, UpdatedAt, Text);
+        CumQty, LeavesQty, Math.Round(AvgPx, 6), Status, Account, CreatedAt, UpdatedAt, Text) { Legs = Legs };
 }
 
 public sealed record PendingChange(bool IsCancel, string ClOrdID, string OrigClOrdID, decimal? NewPrice, decimal NewQty);
@@ -175,7 +178,54 @@ public sealed record OrderView(
     string? Account,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    string? Text);
+    string? Text)
+{
+    public IReadOnlyList<OrderLeg>? Legs { get; init; }
+
+    public bool IsMultileg => Legs is { Count: > 0 };
+
+    /// <summary>"SPY 02 Oct 26 560/565 C vertical" for spreads, the contract otherwise.</summary>
+    public string Display => IsMultileg ? Strategy.Describe(Legs!) : Contract.Display;
+}
+
+/// <summary>One leg of a multi-leg order, with its side when the strategy is bought.</summary>
+public sealed record OrderLeg(OptionContract Contract, int Ratio, Side Side);
+
+public static class Strategy
+{
+    /// <summary>Names the common two- and three-leg shapes; anything else is listed leg by leg.</summary>
+    public static string Describe(IReadOnlyList<OrderLeg> legs)
+    {
+        var c = legs[0].Contract;
+        var prefix = $"{c.Underlying} {c.Expiry:dd MMM yy}";
+        string R(OptionContract x) => x.Right == Pricing.OptionRight.Call ? "C" : "P";
+        var sameExpiry = legs.All(l => l.Contract.Expiry == c.Expiry);
+        if (legs.Count == 2 && sameExpiry)
+        {
+            var (a, b) = (legs[0], legs[1]);
+            if (a.Contract.Right == b.Contract.Right && a.Side != b.Side && a.Ratio == b.Ratio)
+            {
+                return $"{prefix} {a.Contract.Strike:0.##}/{b.Contract.Strike:0.##} {R(a.Contract)} vertical";
+            }
+
+            if (a.Contract.Right != b.Contract.Right && a.Side == b.Side && a.Ratio == b.Ratio)
+            {
+                return a.Contract.Strike == b.Contract.Strike
+                    ? $"{prefix} {a.Contract.Strike:0.##} straddle"
+                    : $"{prefix} {Math.Min(a.Contract.Strike, b.Contract.Strike):0.##}/{Math.Max(a.Contract.Strike, b.Contract.Strike):0.##} strangle";
+            }
+        }
+
+        if (legs.Count == 3 && sameExpiry && legs.All(l => l.Contract.Right == c.Right) && legs[1].Ratio == 2 * legs[0].Ratio
+            && legs[2].Ratio == legs[0].Ratio && legs[1].Side != legs[0].Side)
+        {
+            return $"{prefix} {legs[0].Contract.Strike:0.##}/{legs[1].Contract.Strike:0.##}/{legs[2].Contract.Strike:0.##} {R(c)} butterfly";
+        }
+
+        return string.Join(" + ", legs.Select(l =>
+            $"{(l.Side == Side.Buy ? "+" : "-")}{l.Ratio} {l.Contract.Underlying} {l.Contract.Strike:0.##}{R(l.Contract)} {l.Contract.Expiry:dd MMM}"));
+    }
+}
 
 /// <summary>OrdRejReason(103) values the engine uses.</summary>
 public enum OrdRejReason
@@ -211,7 +261,13 @@ public sealed record ExecutionReportEvent(
     string? Text,
     OrdRejReason? RejectReason,
     DateTime TransactTime,
-    long? ReceivedTimestamp);
+    long? ReceivedTimestamp)
+{
+    /// <summary>For multi-leg orders: set on per-leg fill reports (MultiLegReportingType=2).</summary>
+    public LegExecution? Leg { get; init; }
+}
+
+public sealed record LegExecution(OptionContract Contract, Side Side, decimal Quantity, decimal Price);
 
 public sealed record CancelRejectEvent(
     string ClientId,

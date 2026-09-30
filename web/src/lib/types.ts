@@ -117,6 +117,13 @@ export interface Me {
   sessions: SessionConfig[]
 }
 
+export interface BlotterLeg {
+  contractId: number
+  display: string
+  ratio: number
+  side: 'Buy' | 'Sell'
+}
+
 export interface BlotterRow {
   orderId: string
   clOrdID: string
@@ -139,6 +146,7 @@ export interface BlotterRow {
   lastExecType: string
   lastQty: number
   lastPx: number
+  legs?: BlotterLeg[] | null
 }
 
 export interface ClientOrderState {

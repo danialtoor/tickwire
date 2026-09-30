@@ -9,6 +9,7 @@ import { ExpiryBar } from '../components/ExpiryBar'
 import { Inspector, type InspectorView } from '../components/Inspector'
 import { OrderTicket } from '../components/OrderTicket'
 import { SpotChart } from '../components/SpotChart'
+import { SpreadTicket } from '../components/SpreadTicket'
 import { api } from '../lib/api'
 import { cn, expiryLabel, pct, px, time } from '../lib/format'
 import { live } from '../lib/live'
@@ -43,6 +44,7 @@ export default function Trader() {
   const [view, setView] = useState<InspectorView>('venue')
   const [orderFilter, setOrderFilter] = useState<string | null>(null)
   const [bottomTab, setBottomTab] = useState<'blotter' | 'chaos' | 'tape'>('blotter')
+  const [ticketTab, setTicketTab] = useState<'single' | 'spread'>('single')
   const [error, setError] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
@@ -234,7 +236,30 @@ export default function Trader() {
 
         <aside className="grid content-start gap-3 md:grid-cols-2 xl:grid-cols-1">
           <section className="panel p-3">
-            <OrderTicket quote={quote} book={book} token={guest?.token ?? null} preset={ticketPreset} disabled={mode !== 'live'} onSent={say} />
+            <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-line p-0.5 text-xs">
+              {(['single', 'spread'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  data-testid={`ticket-tab-${t}`}
+                  onClick={() => setTicketTab(t)}
+                  className={cn('rounded-md py-1 font-medium', ticketTab === t ? 'bg-panel-2 text-ink' : 'text-muted hover:text-ink-2')}
+                >
+                  {t === 'single' ? 'Single option' : 'Spread (multi-leg)'}
+                </button>
+              ))}
+            </div>
+            {ticketTab === 'single' ? (
+              <OrderTicket quote={quote} book={book} token={guest?.token ?? null} preset={ticketPreset} disabled={mode !== 'live'} onSent={say} />
+            ) : (
+              <SpreadTicket
+                chain={chain}
+                anchorStrike={chain?.rows.find((r) => r.call?.id === contractId || r.put?.id === contractId)?.strike ?? null}
+                token={guest?.token ?? null}
+                disabled={mode !== 'live'}
+                onSent={say}
+              />
+            )}
           </section>
           <section className="panel">
             <div className="border-b border-line px-3 py-2">

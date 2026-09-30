@@ -122,12 +122,15 @@ export function summarize(m: ParsedMessage): string {
       const px = g(44) ? ` @ ${g(44)}` : ' MKT'
       return `${side} ${g(38) ?? '?'} ${instrument(m)}${px}`
     }
+    case 'AB':
+      return `${g(54) === '1' ? 'Buy' : 'Sell'} ${g(38)} × ${g(555)}-leg ${g(55)} spread @ ${g(44)} net`
     case 'F':
       return `Cancel ${g(41)}`
     case 'G':
       return `Replace ${g(41)} → ${g(38)}${g(44) ? ` @ ${g(44)}` : ''}`
     case '8': {
       const exec = enumMeaning(150, g(150) ?? '') ?? g(150)
+      if (g(442) === '2') return `Leg fill ${g(54) === '1' ? 'buy' : 'sell'} ${g(32)} ${instrument(m)} @ ${g(31)}`
       const last = g(32) && Number(g(32)) > 0 ? ` ${g(32)} @ ${g(31)}` : ''
       const text = g(58) ? ` — ${g(58)}` : ''
       return `${exec}${last} · cum ${g(14)} leaves ${g(151)}${text}`

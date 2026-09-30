@@ -99,6 +99,7 @@ Tags 5000 and above are user-defined and accepted without a dictionary entry.
 | F | OrderCancelRequest | OrigClOrdID(41) = the order's current ClOrdID |
 | G | OrderCancelReplaceRequest | price and/or quantity; OrigClOrdID(41) = current ClOrdID |
 | H | OrderStatusRequest | answered with ExecType=I |
+| AB | NewOrderMultileg | 2 to 4 legs on one underlying, net limit price (see below) |
 
 Any other application MsgType gets `BusinessMessageReject(j)` with `380=3` (unsupported message type).
 
@@ -182,6 +183,33 @@ OrderCancelReject(9) reasons:
 
 `434` is `1` for cancel requests and `2` for replaces.
 
+### NewOrderMultileg (AB): spreads
+
+| Tag | Field | Rules |
+|---|---|---|
+| 11 | ClOrdID | |
+| 54 | Side | `1` buys the strategy as the legs define it, `2` sells it |
+| 55 | Symbol | the underlying |
+| 38 | OrderQty | number of spread units |
+| 40 | OrdType | `2` (limit) only |
+| 44 | Price | net price per unit: Σ ratio × leg price, + for bought legs, − for sold legs. May be negative. |
+| 59 | TimeInForce | `0` day or `3` IOC (no FOK) |
+| 555 | NoLegs | 2 to 4; each leg starts with LegSymbol(600) |
+| 602 | LegSecurityID | OCC symbol, **or** 611 LegMaturityDate + 612 LegStrikePrice + 608 LegCFICode `OC…`/`OP…` |
+| 623 | LegRatioQty | whole number 1–10 (default 1) |
+| 624 | LegSide | `1` buy, `2` sell, as the leg trades when the strategy is bought |
+
+FIX 4.4 has no LegPutOrCall; calls and puts are distinguished by LegCFICode (`OC` / `OP`) or the OCC symbol.
+
+Spreads trade against the outright books: whenever every leg's best price supports at least one unit at a net price
+within the limit, all legs execute together (never one without the others). Unfilled units rest (Day) and are
+re-checked after every market update, or are canceled (IOC).
+
+Reports: strategy-level ExecutionReports carry `442=3` (MultiLegReportingType) and the NoLegs group; every leg trade
+is a separate ExecutionReport with `442=2`, the leg's instrument, side, `32` LastQty and `31` LastPx (CumQty and
+LeavesQty on leg reports are the strategy's). Cancel with OrderCancelRequest(F); replace isn't supported for spreads
+(OrderCancelReject, `58=Multi-leg orders can't be replaced`).
+
 ## 4. Pre-trade risk
 
 Every NewOrderSingle and replace is checked against the client's limits (visible and adjustable on the Ops page and
@@ -198,6 +226,7 @@ with a readable Text(58):
 | Message throttle | 10/s | 0 | `Message rate above 10/s` |
 | Kill switch | off | 0 | `Kill switch engaged: new orders are blocked` |
 | Duplicate ClOrdID | | 6 | `Duplicate ClOrdID ORD-1` |
+| Spreads: legs, underlying, band vs strategy theo | 2–4 legs, one underlying | 99 | `Net price 9.99 is outside the band of strategy theo 2.14 ± 3.26` |
 | Unknown instrument | | 1 | `Unknown instrument: SPY 2026-10-02 565 call is not listed` |
 
 Engaging the kill switch also cancels every open order (`150=4`, `58=Kill switch engaged`). By default a client's

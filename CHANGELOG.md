@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 (2026-09-30)
+
+- **Multi-leg spreads**: NewOrderMultileg (35=AB) with 2–4 legs, net limit price, all-or-none leg execution against the
+  outright books, resting spreads re-checked on every tick, strategy (442=3) and leg (442=2) ExecutionReports,
+  spread risk checks. Spread ticket in the Trader with vertical, straddle, strangle and butterfly templates.
+  QuickFIX/n interop test sends a real NewOrderMultileg.
+- **Live options data**: bring your own key for SpiderRock, Databento, Polygon.io, Tradier or Alpaca, plus a demo feed;
+  quotes show beside the simulated chain for the visitor who connected them.
+- **Market realism**: mean-reverting underlyings and a daily expiry roll (resting orders expire with ExecType=C).
+- Horizontal expiry bar with days to expiry; Log Analyzer understands multi-leg logs.
+
 ## 1.0.0 (2026-09-27)
 
 First release.

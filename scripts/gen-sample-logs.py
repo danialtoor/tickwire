@@ -160,12 +160,42 @@ def sample_no_acks() -> list[str]:
     ]
 
 
+def sample_spread() -> list[str]:
+    legs = [(555, "2"),
+            (600, "SPY"), (602, "SPY   250620C00560000"), (603, "8"), (608, "OCXXXS"), (609, "OPT"), (611, "20250620"), (612, "560"), (623, "1"), (624, "1"),
+            (600, "SPY"), (602, "SPY   250620C00565000"), (603, "8"), (608, "OCXXXS"), (609, "OPT"), (611, "20250620"), (612, "565"), (623, "1"), (624, "2")]
+    ab = [(11, "SP-1"), (54, "1"), (55, "SPY")] + legs + [(60, ts(1.0)), (38, "3"), (40, "2"), (44, "1.85"), (59, "0")]
+
+    def strat(exec_id, exec_type, status, cum, leaves, last_qty=0, last_px="0", avg="0"):
+        body = [(37, "TW30"), (11, "SP-1"), (17, exec_id), (150, exec_type), (39, status), (442, "3"), (55, "SPY"), (54, "1"), (38, "3"), (40, "2"), (44, "1.85")]
+        if last_qty:
+            body += [(32, str(last_qty)), (31, last_px)]
+        return body + [(151, str(leaves)), (14, str(cum)), (6, avg), (60, ts(1.1))] + legs
+
+    def leg(exec_id, strike, side, qty, px, cum, leaves):
+        return [(37, "TW30"), (11, "SP-1"), (17, exec_id), (150, "F"), (39, "2" if leaves == 0 else "1"), (442, "2"), (55, "SPY"),
+                (167, "OPT"), (541, "20250620"), (201, "1"), (202, strike), (54, side), (38, str(qty)), (40, "2"),
+                (32, str(qty)), (31, px), (151, str(leaves)), (14, str(cum)), (6, "1.85"), (60, ts(1.1))]
+
+    return [
+        quickfix_line(0.0, "OUT", fix(C, V, 1, "A", 0.0, logon(reset=True))),
+        quickfix_line(0.1, "IN ", fix(V, C, 1, "A", 0.1, logon(reset=True))),
+        quickfix_line(1.0, "OUT", fix(C, V, 2, "AB", 1.0, ab)),
+        quickfix_line(1.1, "IN ", fix(V, C, 2, "8", 1.1, strat("E300", "A", "A", 0, 3))),
+        quickfix_line(1.1, "IN ", fix(V, C, 3, "8", 1.1, strat("E301", "0", "0", 0, 3))),
+        quickfix_line(1.1, "IN ", fix(V, C, 4, "8", 1.1, strat("E302", "F", "2", 3, 0, 3, "1.85", "1.85"))),
+        quickfix_line(1.1, "IN ", fix(V, C, 5, "8", 1.1, leg("E303", "560", "1", 3, "4.39", 3, 0))),
+        quickfix_line(1.1, "IN ", fix(V, C, 6, "8", 1.1, leg("E304", "565", "2", 3, "2.54", 3, 0))),
+    ]
+
+
 SAMPLES = {
     "01-gap-recovered-and-unfilled.log": (sample_gap, "A fill is lost and recovered through ResendRequest; later two messages vanish for good."),
     "02-sequence-too-low.log": (sample_seq_too_low, "A client restarts without its message store and logs on from seq 1."),
     "03-garbled-messages.log": (sample_garbled, "One order with a bad CheckSum, one with a bad BodyLength; '|' delimited, as pasted into a ticket."),
     "04-broken-state-machine.log": (sample_state_machine, "A counterparty's OMS reports a fill after Filled, a LeavesQty that doesn't add up and a reused ExecID."),
     "05-orders-not-acking.log": (sample_no_acks, "\"My orders aren't acking\": a session reject, a silent venue and a heartbeat timeout."),
+    "06-clean-vertical-spread.log": (sample_spread, "A clean NewOrderMultileg vertical: strategy reports plus leg fills. Nothing should be flagged."),
 }
 
 

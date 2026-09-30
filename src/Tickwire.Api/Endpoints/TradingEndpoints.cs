@@ -9,6 +9,10 @@ public sealed record NewOrderBody(int ContractId, string Side, string Type, stri
 
 public sealed record ReplaceBody(decimal? Price, decimal Quantity);
 
+public sealed record SpreadLegBody(int ContractId, int Ratio, string Side);
+
+public sealed record SpreadOrderBody(IReadOnlyList<SpreadLegBody> Legs, string Side, string? Tif, decimal Price, decimal Quantity);
+
 public sealed record OrderAccepted(string ClOrdID);
 
 public sealed record MeDto(string ClientId, string DisplayName, bool IsGuest, DateTime? ExpiresAt, bool KillSwitch, RiskLimits Limits,
@@ -98,6 +102,49 @@ public static class TradingEndpoints
             })
             .RequireRateLimiting("orders")
             .WithSummary("Sends a NewOrderSingle(D) over the caller's in-browser FIX session");
+
+        api.MapPost("/orders/spread", async (SpreadOrderBody body, HttpContext http, SessionManager sessions, InstrumentRegistry instruments,
+                CancellationToken ct) =>
+            {
+                var caller = await Auth.CallerAsync(http);
+                if (caller.ClientId is null)
+                {
+                    return Auth.Unauthorized();
+                }
+
+                var trader = await sessions.EnsureGuestTraderAsync(caller.ClientId, ct);
+                if (trader is null)
+                {
+                    return Results.Problem("No in-browser session for this client", statusCode: 409);
+                }
+
+                var legs = new List<OrderLeg>();
+                foreach (var l in body.Legs ?? [])
+                {
+                    if (instruments.Get(l.ContractId) is not { } contract)
+                    {
+                        return Results.ValidationProblem(new Dictionary<string, string[]> { ["legs"] = [$"Unknown contract {l.ContractId}"] });
+                    }
+
+                    legs.Add(new OrderLeg(contract, l.Ratio, l.Side.Equals("sell", StringComparison.OrdinalIgnoreCase) ? Side.Sell : Side.Buy));
+                }
+
+                if (legs.Count is < 2 or > 4)
+                {
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["legs"] = ["2 to 4 legs"] });
+                }
+
+                if (!trader.Session.IsLoggedOn)
+                {
+                    return Results.Problem("The FIX session is reconnecting; try again in a few seconds", statusCode: 503);
+                }
+
+                var side = body.Side.Equals("sell", StringComparison.OrdinalIgnoreCase) ? Side.Sell : Side.Buy;
+                var tif = (body.Tif ?? "day").Equals("ioc", StringComparison.OrdinalIgnoreCase) ? TimeInForce.ImmediateOrCancel : TimeInForce.Day;
+                return Results.Accepted(value: new OrderAccepted(trader.SendMultileg(legs, side, tif, body.Price, body.Quantity)));
+            })
+            .RequireRateLimiting("orders")
+            .WithSummary("Sends a NewOrderMultileg(AB): a spread with a net limit price, over the caller's FIX session");
 
         api.MapGet("/orders", async (HttpContext http, SessionManager sessions, OrderManager oms, CancellationToken ct) =>
             {

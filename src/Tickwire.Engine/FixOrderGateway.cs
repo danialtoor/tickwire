@@ -68,6 +68,9 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
             case MsgTypes.NewOrderSingle:
                 OnNewOrder(session, client, message, received);
                 break;
+            case MsgTypes.NewOrderMultileg:
+                OnNewMultileg(session, client, message, received);
+                break;
             case MsgTypes.OrderCancelRequest:
                 _oms.Submit(new CancelOrderRequest(client, message.GetString(Tags.ClOrdID)!, message.GetString(Tags.OrigClOrdID)!, received));
                 break;
@@ -123,6 +126,119 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
         {
             RawSymbol = m.GetString(Tags.Symbol),
         });
+    }
+
+    private void OnNewMultileg(FixSession session, ClientAccount client, FixMessage m, long received)
+    {
+        var side = m.GetChar(Tags.Side) switch
+        {
+            '1' => (Side?)Side.Buy,
+            '2' => Side.Sell,
+            _ => null,
+        };
+        var tif = m.GetChar(Tags.TimeInForce) switch
+        {
+            null or '0' => (TimeInForce?)TimeInForce.Day,
+            '3' => TimeInForce.ImmediateOrCancel,
+            '4' => TimeInForce.FillOrKill,
+            _ => null,
+        };
+        if (side is null || tif is null || m.GetChar(Tags.OrdType) != '2')
+        {
+            BusinessReject(session, m, BusinessRejectReason.Other,
+                "NewOrderMultileg needs Side(54) 1 or 2, OrdType(40)=2 (limit, net price) and TimeInForce(59) 0 or 3");
+            return;
+        }
+
+        var legs = ResolveLegs(m, out var error);
+        _oms.Submit(new NewSpreadRequest(client, m.GetString(Tags.ClOrdID)!, legs, error, side.Value, tif.Value, m.GetDecimal(Tags.Price),
+            m.GetDecimal(Tags.OrderQty) ?? 0, m.GetString(Tags.Account), received));
+    }
+
+    /// <summary>
+    /// Reads the NoLegs(555) group. Each leg starts with LegSymbol(600) and names its contract either with an OCC symbol in
+    /// LegSecurityID(602) or with LegMaturityDate(611), LegStrikePrice(612) and LegCFICode(608) OC.../OP... (FIX 4.4 has
+    /// no LegPutOrCall). LegRatioQty(623) and LegSide(624) default to 1 and buy.
+    /// </summary>
+    public IReadOnlyList<OrderLeg> ResolveLegs(FixMessage m, out string? error)
+    {
+        error = null;
+        var raw = new List<Dictionary<int, string>>();
+        var inLegs = false;
+        foreach (var f in m.Fields)
+        {
+            if (f.Tag == Tags.NoLegs)
+            {
+                inLegs = true;
+                continue;
+            }
+
+            if (!inLegs)
+            {
+                continue;
+            }
+
+            if (f.Tag == Tags.LegSymbol)
+            {
+                raw.Add([]);
+            }
+
+            if (raw.Count > 0 && f.Tag is Tags.LegSymbol or Tags.LegSecurityID or Tags.LegCFICode or Tags.LegMaturityDate
+                    or Tags.LegStrikePrice or Tags.LegRatioQty or Tags.LegSide)
+            {
+                raw[^1][f.Tag] = m.ValueString(f);
+            }
+        }
+
+        if (raw.Count != (m.GetInt(Tags.NoLegs) ?? -1))
+        {
+            error = $"NoLegs(555) says {m.GetInt(Tags.NoLegs)} but {raw.Count} leg(s) start with LegSymbol(600)";
+            return [];
+        }
+
+        var legs = new List<OrderLeg>();
+        for (var i = 0; i < raw.Count; i++)
+        {
+            var leg = raw[i];
+            OptionContract? contract = null;
+            if (leg.TryGetValue(Tags.LegSecurityID, out var id) && OccSymbol.TryParse(id, out _))
+            {
+                contract = _instruments.Find(id);
+            }
+            else if (leg.TryGetValue(Tags.LegSymbol, out var root) && leg.TryGetValue(Tags.LegMaturityDate, out var date)
+                && leg.TryGetValue(Tags.LegStrikePrice, out var strikeText) && leg.TryGetValue(Tags.LegCFICode, out var cfi)
+                && DateOnly.TryParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var expiry)
+                && decimal.TryParse(strikeText, NumberStyles.Float, CultureInfo.InvariantCulture, out var strike)
+                && cfi.Length >= 2 && cfi[0] == 'O' && cfi[1] is 'C' or 'P')
+            {
+                contract = _instruments.Find(root, expiry, cfi[1] == 'C' ? OptionRight.Call : OptionRight.Put, strike);
+            }
+            else
+            {
+                error = $"Leg {i + 1}: give an OCC symbol in LegSecurityID(602), or LegMaturityDate(611), LegStrikePrice(612) and LegCFICode(608) OC/OP";
+                return [];
+            }
+
+            if (contract is null)
+            {
+                error = $"Leg {i + 1}: instrument is not listed";
+                return [];
+            }
+
+            var ratio = leg.TryGetValue(Tags.LegRatioQty, out var r) && decimal.TryParse(r, NumberStyles.Float, CultureInfo.InvariantCulture, out var rq)
+                ? rq
+                : 1;
+            if (ratio != Math.Floor(ratio))
+            {
+                error = $"Leg {i + 1}: LegRatioQty(623) must be a whole number";
+                return [];
+            }
+
+            var legSide = leg.GetValueOrDefault(Tags.LegSide) is "2" ? Side.Sell : Side.Buy;
+            legs.Add(new OrderLeg(contract, (int)ratio, legSide));
+        }
+
+        return legs;
     }
 
     /// <summary>
@@ -201,7 +317,28 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
         }
 
         er.Set(Tags.Account, o.Account);
-        AppendInstrument(er, o.Contract);
+        if (report.Leg is { } leg)
+        {
+            // Leg fill of a multi-leg order: the leg's own instrument, side, quantity and price.
+            er.Set(Tags.MultiLegReportingType, '2');
+            AppendInstrument(er, leg.Contract);
+            er.Set(Tags.Side, leg.Side == Side.Buy ? '1' : '2').Set(Tags.OrderQty, leg.Quantity).Set(Tags.OrdType, '2')
+                .Set(Tags.LastQty, leg.Quantity).Set(Tags.LastPx, leg.Price)
+                .Set(Tags.LeavesQty, o.LeavesQty).Set(Tags.CumQty, o.CumQty).Set(Tags.AvgPx, o.AvgPx)
+                .SetUtcTimestamp(Tags.TransactTime, report.TransactTime);
+            session.Send(er);
+            return;
+        }
+
+        if (o.IsMultileg)
+        {
+            er.Set(Tags.MultiLegReportingType, '3').Set(Tags.Symbol, o.Contract.Underlying);
+        }
+        else
+        {
+            AppendInstrument(er, o.Contract);
+        }
+
         er.Set(Tags.Side, o.Side == Side.Buy ? '1' : '2')
             .Set(Tags.OrderQty, o.OrderQty)
             .Set(Tags.OrdType, o.OrdType == OrderType.Market ? '1' : '2');
@@ -222,7 +359,12 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
             .SetUtcTimestamp(Tags.TransactTime, report.TransactTime)
             .Set(Tags.Text, report.Text ?? (report.ExecType == ExecType.Rejected ? o.Text : null));
 
-        if (o.Contract.Id != 0 && _marketData.Quote(o.Contract.Id) is { } quote)
+        if (o.IsMultileg)
+        {
+            AppendLegs(er, o.Legs!);
+        }
+
+        if (o.Contract.Id != 0 && !o.IsMultileg && _marketData.Quote(o.Contract.Id) is { } quote)
         {
             er.Set(Tags.TheoValue, Math.Round((decimal)quote.Theo, 4));
             if (_marketData.Underlying(o.Contract.Underlying) is { } u)
@@ -256,6 +398,24 @@ public sealed class FixOrderGateway : IFixApplication, IOmsListener
             .Set(Tags.CxlRejReason, (int)reject.Reason)
             .Set(Tags.Text, reject.Text);
         session.Send(b);
+    }
+
+    /// <summary>NoLegs(555) group in spec order; each leg starts with LegSymbol(600), the group delimiter.</summary>
+    public static void AppendLegs(FixMessageBuilder b, IReadOnlyList<OrderLeg> legs)
+    {
+        b.Set(Tags.NoLegs, legs.Count);
+        foreach (var l in legs)
+        {
+            b.Set(Tags.LegSymbol, l.Contract.Underlying)
+                .Set(Tags.LegSecurityID, l.Contract.OccSymbol)
+                .Set(Tags.LegSecurityIDSource, '8')
+                .Set(Tags.LegCFICode, l.Contract.Right == OptionRight.Call ? "OCXXXS" : "OPXXXS")
+                .Set(Tags.LegSecurityType, "OPT")
+                .SetLocalMktDate(Tags.LegMaturityDate, l.Contract.Expiry)
+                .Set(Tags.LegStrikePrice, l.Contract.Strike)
+                .Set(Tags.LegRatioQty, l.Ratio)
+                .Set(Tags.LegSide, l.Side == Side.Buy ? '1' : '2');
+        }
     }
 
     private static void AppendInstrument(FixMessageBuilder b, OptionContract c)

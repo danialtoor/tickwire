@@ -22,6 +22,19 @@ public sealed record OrderReplaced(long OrderId, IReadOnlyList<Fill> Fills, deci
 
 public sealed record ReplaceFailed(long OrderId, string Reason) : VenueEvent(OrderId);
 
+/// <summary>One leg of a spread: a contract, how many of it per spread unit, and its side when the spread is bought.</summary>
+public sealed record SpreadLeg(int ContractId, int Ratio, Side Side);
+
+public sealed record LegFill(int ContractId, Side Side, decimal Price, decimal Quantity);
+
+/// <summary>Spread units executed together, at a net strategy price, with the leg trades that made them up.</summary>
+public sealed record SpreadExecution(decimal Units, decimal StrategyPrice, IReadOnlyList<LegFill> Legs);
+
+public sealed record SpreadSubmitted(long OrderId, IReadOnlyList<SpreadExecution> Executions, decimal RestingUnits, decimal CanceledUnits,
+    string? CancelReason) : VenueEvent(OrderId);
+
+public sealed record SpreadFilled(long OrderId, SpreadExecution Execution) : VenueEvent(OrderId);
+
 /// <summary>A resting client order was removed because its contract expired and was delisted.</summary>
 public sealed record OrderExpired(long OrderId, decimal ExpiredQuantity) : VenueEvent(OrderId);
 
@@ -75,6 +88,8 @@ public sealed partial class VenueShard : IAsyncDisposable
     private readonly Dictionary<(int ContractId, int Maker), (long Bid, long Ask, decimal BidPx, decimal AskPx)> _botQuotes = [];
     private readonly Dictionary<int, Greeks> _theo = [];
     private readonly HashSet<int> _dirty = [];
+    private readonly List<RestingSpread> _spreads = [];
+    private long _nextLegOrderId = -1_000_000_000_000;
     private readonly Channel<Func<ValueTask>> _commands = Channel.CreateUnbounded<Func<ValueTask>>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _stop = new();
     private ITimer? _timer;
@@ -134,8 +149,45 @@ public sealed partial class VenueShard : IAsyncDisposable
             return ValueTask.CompletedTask;
         });
 
+    /// <summary>
+    /// A multi-leg order. It trades against the outright books: whenever every leg's top of book supports at least one
+    /// spread unit at a net price within the limit, all legs execute together (never one without the others). What
+    /// can't trade immediately rests (Day) or is canceled (IOC) and is re-checked after every market update.
+    /// The strategy price is Σ ±ratio × leg price in the legs' own direction: buying pays at most the limit, selling
+    /// receives at least it.
+    /// </summary>
+    public void SubmitSpread(long orderId, IReadOnlyList<SpreadLeg> legs, Side side, TimeInForce tif, decimal limit, decimal units) =>
+        Post(() =>
+        {
+            var spread = new RestingSpread(orderId, legs, side, limit, units);
+            var executions = Execute(spread);
+            var remaining = spread.Remaining;
+            string? reason = null;
+            decimal canceled = 0;
+            if (remaining > 0 && tif != TimeInForce.Day)
+            {
+                canceled = remaining;
+                reason = "Immediate-or-cancel spread remainder canceled";
+            }
+            else if (remaining > 0)
+            {
+                _spreads.Add(spread);
+            }
+
+            Emit(new SpreadSubmitted(orderId, executions, canceled > 0 ? 0 : remaining, canceled, reason));
+            return ValueTask.CompletedTask;
+        });
+
     public void Cancel(long orderId) => Post(() =>
     {
+        var spreadIndex = _spreads.FindIndex(s => s.OrderId == orderId);
+        if (spreadIndex >= 0)
+        {
+            Emit(new OrderCanceled(orderId, _spreads[spreadIndex].Remaining));
+            _spreads.RemoveAt(spreadIndex);
+            return ValueTask.CompletedTask;
+        }
+
         if (_orderContract.Remove(orderId, out var contractId) && _books[contractId].Cancel(orderId) is { } qty)
         {
             _clientFilled.Remove(orderId);
@@ -156,6 +208,12 @@ public sealed partial class VenueShard : IAsyncDisposable
     /// </summary>
     public void Replace(long orderId, decimal newPrice, decimal newTotalQuantity) => Post(() =>
     {
+        if (_spreads.Exists(s => s.OrderId == orderId))
+        {
+            Emit(new ReplaceFailed(orderId, "Multi-leg orders can't be replaced; cancel and send a new one"));
+            return ValueTask.CompletedTask;
+        }
+
         if (!_orderContract.TryGetValue(orderId, out var contractId))
         {
             Emit(new ReplaceFailed(orderId, "Order is not open at the venue"));
@@ -211,6 +269,12 @@ public sealed partial class VenueShard : IAsyncDisposable
     /// </summary>
     public void Delist(DateOnly expiry) => Post(() =>
     {
+        foreach (var spread in _spreads.Where(s => s.Legs.Any(l => _books.TryGetValue(l.ContractId, out var b) && b.Contract.Expiry == expiry)).ToList())
+        {
+            Emit(new OrderExpired(spread.OrderId, spread.Remaining));
+            _spreads.Remove(spread);
+        }
+
         foreach (var book in _books.Values.Where(b => b.Contract.Expiry == expiry).ToList())
         {
             var id = book.Contract.Id;
@@ -350,6 +414,8 @@ public sealed partial class VenueShard : IAsyncDisposable
         {
             NoiseTrade();
         }
+
+        CheckRestingSpreads();
 
         PublishDirty();
         return ValueTask.CompletedTask;
@@ -501,6 +567,79 @@ public sealed partial class VenueShard : IAsyncDisposable
         }
     }
 
+    private void CheckRestingSpreads()
+    {
+        foreach (var spread in _spreads.ToList())
+        {
+            foreach (var execution in Execute(spread))
+            {
+                Emit(new SpreadFilled(spread.OrderId, execution));
+            }
+
+            if (spread.Remaining == 0)
+            {
+                _spreads.Remove(spread);
+            }
+        }
+    }
+
+    /// <summary>Executes as many whole spread units as the legs' top-of-book prices and sizes allow within the limit.</summary>
+    private List<SpreadExecution> Execute(RestingSpread spread)
+    {
+        var executions = new List<SpreadExecution>();
+        while (spread.Remaining > 0)
+        {
+            var tops = new List<(OrderBook Book, SpreadLeg Leg, Side Side, BookLevel Level)>();
+            foreach (var leg in spread.Legs)
+            {
+                if (!_books.TryGetValue(leg.ContractId, out var book))
+                {
+                    return executions;
+                }
+
+                var side = spread.Side == Side.Buy ? leg.Side : (leg.Side == Side.Buy ? Side.Sell : Side.Buy);
+                var level = side == Side.Buy ? book.BestAsk : book.BestBid;
+                if (level is null)
+                {
+                    return executions;
+                }
+
+                tops.Add((book, leg, side, level.Value));
+            }
+
+            var strategyPrice = tops.Sum(t => (t.Leg.Side == Side.Buy ? 1 : -1) * t.Leg.Ratio * t.Level.Price);
+            var marketable = spread.Side == Side.Buy ? strategyPrice <= spread.Limit : strategyPrice >= spread.Limit;
+            var units = Math.Min(spread.Remaining, tops.Min(t => Math.Floor(t.Level.Quantity / t.Leg.Ratio)));
+            if (!marketable || units <= 0)
+            {
+                return executions;
+            }
+
+            var legFills = new List<LegFill>();
+            foreach (var (book, leg, side, level) in tops)
+            {
+                var qty = units * leg.Ratio;
+                var result = book.Submit(_nextLegOrderId--, side, OrderType.Limit, TimeInForce.ImmediateOrCancel, level.Price, qty);
+                AfterFills(book, side, result.Fills);
+                legFills.Add(new LegFill(leg.ContractId, side, level.Price, result.FilledQuantity));
+            }
+
+            spread.Remaining -= units;
+            executions.Add(new SpreadExecution(units, strategyPrice, legFills));
+        }
+
+        return executions;
+    }
+
+    private sealed class RestingSpread(long orderId, IReadOnlyList<SpreadLeg> legs, Side side, decimal limit, decimal units)
+    {
+        public long OrderId { get; } = orderId;
+        public IReadOnlyList<SpreadLeg> Legs { get; } = legs;
+        public Side Side { get; } = side;
+        public decimal Limit { get; } = limit;
+        public decimal Remaining { get; set; } = units;
+    }
+
     private void PublishDirty()
     {
         var now = Now;
@@ -571,6 +710,9 @@ public sealed class SimulatedVenue : IAsyncDisposable
         ShardFor(contract).Submit(orderId, contract.Id, side, type, tif, price, quantity);
 
     public void Cancel(long orderId, OptionContract contract) => ShardFor(contract).Cancel(orderId);
+
+    public void SubmitSpread(long orderId, string underlying, IReadOnlyList<SpreadLeg> legs, Side side, TimeInForce tif, decimal limit,
+        decimal units) => _shards[underlying].SubmitSpread(orderId, legs, side, tif, limit, units);
 
     public void Replace(long orderId, OptionContract contract, decimal price, decimal newTotalQuantity) =>
         ShardFor(contract).Replace(orderId, price, newTotalQuantity);

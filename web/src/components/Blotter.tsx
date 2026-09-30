@@ -73,6 +73,11 @@ export function Blotter({ rows, token, selectedClOrdId, onSelect, onAction }: Pr
                 <td className="num hidden px-2 py-1.5 text-muted 2xl:table-cell">{time(o.created).slice(0, 8)}</td>
                 <td className="px-2 py-1.5">
                   <div className="whitespace-nowrap font-medium">{o.display}</div>
+                  {o.legs && (
+                    <div className="num text-[10.5px] text-ink-2">
+                      {o.legs.map((l) => `${l.side === 'Buy' ? '+' : '−'}${l.ratio} ${l.display.split(' ').slice(-2).join('')}`).join('  ')}
+                    </div>
+                  )}
                   <div className="num text-[10.5px] text-muted" title="ClOrdID(11)">
                     {o.clOrdID}
                   </div>
@@ -134,6 +139,7 @@ export function Blotter({ rows, token, selectedClOrdId, onSelect, onAction }: Pr
                 <td className="whitespace-nowrap px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
                   {open && token && editing !== o.orderId && (
                     <>
+                      {!o.legs && (
                       <button
                         type="button"
                         className="rounded px-1.5 py-0.5 text-[11px] text-ink-2 hover:bg-panel-2 hover:text-ink"
@@ -145,6 +151,7 @@ export function Blotter({ rows, token, selectedClOrdId, onSelect, onAction }: Pr
                       >
                         Modify
                       </button>
+                      )}
                       <button
                         type="button"
                         className="rounded px-1.5 py-0.5 text-[11px] text-sell hover:bg-sell-soft"
