@@ -51,7 +51,8 @@ public sealed class MarketView(InstrumentRegistry instruments, MarketDataCache c
             return null;
         }
 
-        var exp = expiry ?? chain[0].Expiry;
+        // An expiry that has just been delisted falls back to the nearest one still listed.
+        var exp = expiry is { } e && chain.Any(c => c.Expiry == e) ? e : chain[0].Expiry;
         var rows = chain.Where(c => c.Expiry == exp)
             .GroupBy(c => c.Strike)
             .OrderBy(g => g.Key)

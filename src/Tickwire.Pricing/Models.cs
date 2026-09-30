@@ -65,6 +65,17 @@ public static class Gbm
     public static double Step(double spot, double drift, double vol, double dtYears, double z) =>
         spot * Math.Exp(((drift - (0.5 * vol * vol)) * dtYears) + (vol * Math.Sqrt(dtYears) * z));
 
+    /// <summary>
+    /// Mean-reverting step on log price (Ornstein-Uhlenbeck): ln S' = ln S + κ(ln anchor − ln S)dt − σ²/2·dt + σ√dt·Z.
+    /// With κ = 12/yr the price wanders about σ/√(2κ) around the anchor (≈3% for SPY) instead of drifting away for ever.
+    /// </summary>
+    public static double MeanRevertingStep(double spot, double anchor, double kappa, double vol, double dtYears, double z)
+    {
+        var x = Math.Log(spot);
+        var pull = kappa * (Math.Log(anchor) - x) * dtYears;
+        return Math.Exp(x + pull - (0.5 * vol * vol * dtYears) + (vol * Math.Sqrt(dtYears) * z));
+    }
+
     /// <summary>Standard normal sample via Box-Muller.</summary>
     public static double NextGaussian(Random random)
     {

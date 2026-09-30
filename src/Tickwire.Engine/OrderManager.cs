@@ -239,6 +239,9 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
             case ReplaceFailed e:
                 OnReplaceFailed(e);
                 break;
+            case OrderExpired e:
+                OnExpired(e);
+                break;
             case Invoke i:
                 i.Action();
                 break;
@@ -581,6 +584,19 @@ public sealed partial class OrderManager : IVenueEventSink, IAsyncDisposable
 
         CancelReject(order.ClientId, pending.ClOrdID, pending.OrigClOrdID, order, CxlRejReason.TooLateToCancel, true,
             order.Status == OrdStatus.Filled ? "Too late to replace: order filled" : e.Reason);
+    }
+
+    private void OnExpired(OrderExpired e)
+    {
+        if (!_orders.TryGetValue(e.OrderId, out var order) || order.IsTerminal)
+        {
+            return;
+        }
+
+        order.Pending = null;
+        order.LeavesQty = 0;
+        order.Apply(OrderEvent.Expire);
+        Report(order, ExecType.Expired, text: $"Expired: {order.Contract.Display} stopped trading");
     }
 
     // ------------------------------------------------------------------ helpers

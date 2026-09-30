@@ -50,6 +50,12 @@ public sealed class MarketDataCache
     public IReadOnlyList<TradePrint> RecentPrints(string? underlying = null, int max = 50) =>
         [.. _prints.Reverse().Where(p => underlying is null || p.Underlying.Equals(underlying, StringComparison.OrdinalIgnoreCase)).Take(max)];
 
+    public void Remove(int contractId)
+    {
+        _quotes.TryRemove(contractId, out _);
+        Interlocked.Increment(ref _version);
+    }
+
     public void Publish(QuoteSnapshot quote)
     {
         _quotes[quote.ContractId] = quote;

@@ -22,6 +22,9 @@ public sealed record OrderReplaced(long OrderId, IReadOnlyList<Fill> Fills, deci
 
 public sealed record ReplaceFailed(long OrderId, string Reason) : VenueEvent(OrderId);
 
+/// <summary>A resting client order was removed because its contract expired and was delisted.</summary>
+public sealed record OrderExpired(long OrderId, decimal ExpiredQuantity) : VenueEvent(OrderId);
+
 /// <summary>Receives venue events for client orders (positive ids). Called from shard loops; must be thread-safe.</summary>
 public interface IVenueEventSink
 {
@@ -35,6 +38,9 @@ public sealed record VenueOptions
 
     /// <summary>Simulated market time per real second. Makes the underlying move visibly during a short demo.</summary>
     public double TimeAcceleration { get; init; } = 20;
+
+    /// <summary>Pull of the underlying back toward its starting price, per year (0 = pure random walk).</summary>
+    public double MeanReversion { get; init; } = 12;
 
     public bool EnableMarketMakers { get; init; } = true;
     public bool EnableNoiseTraders { get; init; } = true;
@@ -182,6 +188,62 @@ public sealed partial class VenueShard : IAsyncDisposable
         return ValueTask.CompletedTask;
     });
 
+    /// <summary>Adds books for newly listed contracts; market makers start quoting them on the same step.</summary>
+    public void List(IEnumerable<OptionContract> contracts)
+    {
+        var added = contracts.Where(c => c.Underlying == _spec.Symbol).ToList();
+        Post(() =>
+        {
+            foreach (var c in added)
+            {
+                _books.TryAdd(c.Id, new OrderBook(c));
+            }
+
+            RepriceAndRequote();
+            PublishDirty();
+            return ValueTask.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// Removes an expired expiry: resting client orders are reported as expired, maker quotes are pulled, and the books
+    /// and their market data disappear.
+    /// </summary>
+    public void Delist(DateOnly expiry) => Post(() =>
+    {
+        foreach (var book in _books.Values.Where(b => b.Contract.Expiry == expiry).ToList())
+        {
+            var id = book.Contract.Id;
+            foreach (var (orderId, _) in _orderContract.Where(kv => kv.Value == id).ToList())
+            {
+                if (book.Cancel(orderId) is { } qty)
+                {
+                    Emit(new OrderExpired(orderId, qty));
+                }
+
+                _orderContract.Remove(orderId);
+                _clientFilled.Remove(orderId);
+            }
+
+            foreach (var (botId, _) in _botOrders.Where(kv => kv.Value.ContractId == id).ToList())
+            {
+                _botOrders.Remove(botId);
+            }
+
+            foreach (var key in _botQuotes.Keys.Where(k => k.ContractId == id).ToList())
+            {
+                _botQuotes.Remove(key);
+            }
+
+            _books.Remove(id);
+            _theo.Remove(id);
+            _dirty.Remove(id);
+            _cache.Remove(id);
+        }
+
+        return ValueTask.CompletedTask;
+    });
+
     /// <summary>Moves the underlying by a percentage (ops/testing: "flash move").</summary>
     public void Shock(double percent) => Post(() =>
     {
@@ -278,7 +340,9 @@ public sealed partial class VenueShard : IAsyncDisposable
         _lastTick = now;
         if (dtYears > 0)
         {
-            _spot = Gbm.Step(_spot, 0, _spec.RealizedVol, dtYears, Gbm.NextGaussian(_random));
+            _spot = _options.MeanReversion > 0
+                ? Gbm.MeanRevertingStep(_spot, _spec.InitialPrice, _options.MeanReversion, _spec.RealizedVol, dtYears, Gbm.NextGaussian(_random))
+                : Gbm.Step(_spot, 0, _spec.RealizedVol, dtYears, Gbm.NextGaussian(_random));
         }
 
         RepriceAndRequote();
@@ -459,12 +523,8 @@ public sealed partial class VenueShard : IAsyncDisposable
 
     private void Emit(VenueEvent e) => _sink()?.OnVenueEvent(e);
 
-    private double YearsToExpiry(DateOnly expiry)
-    {
-        // Options stop trading at 16:00 New York time on expiry day; 20:00 UTC is close enough for a simulation.
-        var close = expiry.ToDateTime(new TimeOnly(20, 0), DateTimeKind.Utc);
-        return Math.Max((close - Now).TotalDays / 365.0, 1.0 / (365 * 24));
-    }
+    private double YearsToExpiry(DateOnly expiry) =>
+        Math.Max((InstrumentRegistry.CloseOf(expiry) - Now).TotalDays / 365.0, 1.0 / (365 * 24));
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Venue shard {Underlying} error")]
     private static partial void ShardError(ILogger logger, Exception ex, string underlying);
@@ -514,6 +574,22 @@ public sealed class SimulatedVenue : IAsyncDisposable
 
     public void Replace(long orderId, OptionContract contract, decimal price, decimal newTotalQuantity) =>
         ShardFor(contract).Replace(orderId, price, newTotalQuantity);
+
+    public void List(IReadOnlyList<OptionContract> contracts)
+    {
+        foreach (var shard in _shards.Values)
+        {
+            shard.List(contracts);
+        }
+    }
+
+    public void Delist(DateOnly expiry)
+    {
+        foreach (var shard in _shards.Values)
+        {
+            shard.Delist(expiry);
+        }
+    }
 
     public Task FlushAsync() => Task.WhenAll(_shards.Values.Select(s => s.FlushAsync()));
 

@@ -77,12 +77,14 @@ public static class OrderStateMachine
         [(OrdStatus.PendingCancel, OrderEvent.Fill)] = OrdStatus.Filled,
         [(OrdStatus.PendingCancel, OrderEvent.Cancel)] = OrdStatus.Canceled,
         [(OrdStatus.PendingCancel, OrderEvent.RejectCancel)] = null,
+        [(OrdStatus.PendingCancel, OrderEvent.Expire)] = OrdStatus.Expired,
 
         [(OrdStatus.PendingReplace, OrderEvent.PartialFill)] = OrdStatus.PendingReplace,
         [(OrdStatus.PendingReplace, OrderEvent.Fill)] = OrdStatus.Filled,
         [(OrdStatus.PendingReplace, OrderEvent.Replace)] = null,
         [(OrdStatus.PendingReplace, OrderEvent.RejectReplace)] = null,
         [(OrdStatus.PendingReplace, OrderEvent.Cancel)] = OrdStatus.Canceled,
+        [(OrdStatus.PendingReplace, OrderEvent.Expire)] = OrdStatus.Expired,
     }.ToFrozenDictionary();
 
     public static bool IsTerminal(OrdStatus status) =>

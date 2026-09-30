@@ -99,6 +99,9 @@ services.AddSingleton<IOptionFeedProvider>(sp =>
 services.AddSingleton<FeedManager>();
 services.AddHostedService<EngineHost>();
 services.AddHostedService<LivePublisher>();
+services.AddSingleton(sp => new ExpiryRoller(sp.GetRequiredService<InstrumentRegistry>(), sp.GetRequiredService<SimulatedVenue>(),
+    sp.GetRequiredService<MarketDataCache>()));
+services.AddHostedService<ChainRollService>();
 services.AddHostedService(sp => sp.GetRequiredService<Housekeeping>());
 
 // ---- web

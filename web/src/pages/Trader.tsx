@@ -52,6 +52,10 @@ export default function Trader() {
     toastTimer.current = setTimeout(() => setToast(null), 4000)
   }
 
+  const current = underlyings.find((u) => u.symbol === selected.underlying)
+  // The daily roll delists passed expiries; a selection that's no longer listed falls back to the nearest one.
+  const listedExpiry = selected.expiry && (!current || current.expiries.includes(selected.expiry)) ? selected.expiry : null
+
   // Live mode: guest session, SignalR subscriptions and history.
   useEffect(() => {
     if (mode !== 'live') return
@@ -82,8 +86,8 @@ export default function Trader() {
   }, [mode])
 
   useEffect(() => {
-    if (mode === 'live') void live.chain(selected.underlying, selected.expiry)
-  }, [mode, selected.underlying, selected.expiry])
+    if (mode === 'live') void live.chain(selected.underlying, listedExpiry)
+  }, [mode, selected.underlying, listedExpiry])
 
   const ordersQuery = useQuery({
     queryKey: ['orders', guest?.token],
@@ -135,7 +139,6 @@ export default function Trader() {
   }, [chain, contractId])
 
   const session = ops?.sessions.find((s) => s.key === guest?.sessionKey)
-  const current = underlyings.find((u) => u.symbol === selected.underlying)
 
   const onPick = (p: Pick) => {
     select({ contractId: p.contractId })
