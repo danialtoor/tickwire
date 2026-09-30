@@ -65,7 +65,8 @@ public sealed class QuickFixInteropTests : IAsyncLifetime
         // Clean logout
         client.Session.Logout("done");
         await Eventually(() => _session.State == SessionState.Disconnected);
-        client.AdminIn.Should().Contain(m => m.Header.GetString(35) == "5");
+        // Our side is disconnected as soon as its Logout reply is written; QuickFIX's thread may still be reading it.
+        await Eventually(() => client.AdminIn.Any(m => m.Header.GetString(35) == "5"));
     }
 
     [Fact]
