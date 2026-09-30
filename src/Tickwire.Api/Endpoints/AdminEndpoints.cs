@@ -185,7 +185,7 @@ public static class AdminEndpoints
                     return new DecodeResult(false, error.ToString(), null, null, null, [], null);
                 }
 
-                var dict = FixDictionary.Fix44;
+                var dict = FixDictionary.For(msg.BeginString);
                 return new DecodeResult(true, null, msg.MsgType, dict.MessageName(msg.MsgType),
                     msg.IsIntact ? "OK" : $"{msg.Integrity} (BodyLength {msg.DeclaredBodyLength}/{msg.ActualBodyLength}, CheckSum {msg.DeclaredChecksum:000}/{msg.ActualChecksum:000})",
                     dict.Decode(msg), dict.Validate(msg));

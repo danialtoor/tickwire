@@ -10,6 +10,13 @@ public static class ClientConfigs
     {
         var host = options.PublicFixHost;
         var port = options.FixPort;
+        var fixt = s.BeginString == SessionManager.Fixt11;
+
+        // FIXT splits the session and application dictionaries, and names the application version up front.
+        var dictionaries = fixt
+            ? "TransportDataDictionary=FIXT11.xml\nAppDataDictionary=FIX50SP2.xml\nDefaultApplVerID=FIX.5.0SP2"
+            : "DataDictionary=FIX44.xml";
+        var logonExtra = fixt ? "|1137=9" : string.Empty;
         var quickfixn = $"""
             # QuickFIX/n initiator config for Tickwire (simulated venue, no real money)
             [DEFAULT]
@@ -20,7 +27,7 @@ public static class ClientConfigs
             StartTime=00:00:00
             EndTime=00:00:00
             UseDataDictionary=Y
-            DataDictionary=FIX44.xml
+            {dictionaries}
             ValidateUserDefinedFields=N
             ResetOnLogon=Y
 
@@ -42,7 +49,7 @@ public static class ClientConfigs
             StartTime=00:00:00
             EndTime=00:00:00
             UseDataDictionary=Y
-            DataDictionary=FIX44.xml
+            {dictionaries}
             ValidateUserDefinedFields=N
             ResetOnLogon=Y
 
@@ -61,7 +68,7 @@ public static class ClientConfigs
             """;
         var raw = $"""
             # Logon you should send (| = SOH):
-            8={s.BeginString}|9=..|35=A|49={s.ClientCompId}|56={s.VenueCompId}|34=1|52=<UTC now>|98=0|108={s.HeartBtInt}|141=Y|10=..|
+            8={s.BeginString}|9=..|35=A|49={s.ClientCompId}|56={s.VenueCompId}|34=1|52=<UTC now>|98=0|108={s.HeartBtInt}|141=Y{logonExtra}|10=..|
 
             # Then a limit order for 1 SPY call (use a strike/expiry from GET /api/chain/SPY):
             35=D|11=my-order-1|55=SPY|167=OPT|201=1|202=<strike>|541=<yyyymmdd>|54=1|60=<UTC now>|38=1|40=2|44=<price>|59=0
@@ -71,7 +78,7 @@ public static class ClientConfigs
             raw = $"""
                 # Drop copy session: log on as below, then just listen. Every ExecutionReport for {clientId}'s orders
                 # arrives here too, with CopyMsgIndicator(797)=Y. Orders sent on this session are rejected (35=j).
-                8={s.BeginString}|9=..|35=A|49={s.ClientCompId}|56={s.VenueCompId}|34=1|52=<UTC now>|98=0|108={s.HeartBtInt}|141=Y|10=..|
+                8={s.BeginString}|9=..|35=A|49={s.ClientCompId}|56={s.VenueCompId}|34=1|52=<UTC now>|98=0|108={s.HeartBtInt}|141=Y{logonExtra}|10=..|
                 """;
         }
 

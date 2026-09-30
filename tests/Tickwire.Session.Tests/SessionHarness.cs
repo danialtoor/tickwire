@@ -60,20 +60,27 @@ internal sealed class SessionHarness : IAsyncDisposable
     public FixSession Acceptor { get; private set; }
     public FixSession Initiator { get; private set; }
 
-    public SessionHarness(int heartBtInt = 30, ISessionStore? acceptorStore = null)
+    /// <param name="beginString">FIX.4.4, or FIXT.1.1 with <paramref name="acceptorApplVer"/>/<paramref name="initiatorApplVer"/>
+    /// as each side's DefaultApplVerID.</param>
+    public SessionHarness(int heartBtInt = 30, ISessionStore? acceptorStore = null, string beginString = "FIX.4.4",
+        string? acceptorApplVer = null, string? initiatorApplVer = null)
     {
         AcceptorStore = new MemorySessionStore(Time.GetUtcNow().UtcDateTime);
         InitiatorStore = new MemorySessionStore(Time.GetUtcNow().UtcDateTime);
         Acceptor = new FixSession(new SessionSettings
         {
-            Id = new SessionId("FIX.4.4", "TICKWIRE", "CLIENT"),
+            Id = new SessionId(beginString, "TICKWIRE", "CLIENT"),
             Role = SessionRole.Acceptor,
+            Dictionary = Tickwire.Fix.Dictionary.FixDictionary.For(beginString),
+            DefaultApplVerID = acceptorApplVer,
         }, acceptorStore ?? AcceptorStore, AcceptorApp, Time, observer: AcceptorEvents);
         Initiator = new FixSession(new SessionSettings
         {
-            Id = new SessionId("FIX.4.4", "CLIENT", "TICKWIRE"),
+            Id = new SessionId(beginString, "CLIENT", "TICKWIRE"),
             Role = SessionRole.Initiator,
             HeartBtInt = heartBtInt,
+            Dictionary = Tickwire.Fix.Dictionary.FixDictionary.For(beginString),
+            DefaultApplVerID = initiatorApplVer,
         }, InitiatorStore, InitiatorApp, Time, observer: InitiatorEvents);
         Acceptor.StartAsync();
         Initiator.StartAsync();

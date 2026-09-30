@@ -12,6 +12,8 @@
     <PackageReference Include="MySqlConnector" Version="2.6.2" />
     <PackageReference Include="QuickFIXn.Core" Version="1.13.0" />
     <PackageReference Include="QuickFIXn.FIX4.4" Version="1.13.0" />
+    <PackageReference Include="QuickFIXn.FIX5.0SP2" Version="1.13.0" />
+    <PackageReference Include="QuickFIXn.FIXT1.1" Version="1.13.0" />
     <PackageReference Include="Testcontainers.MySql" Version="4.15.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
@@ -29,6 +31,8 @@
 
   <ItemGroup>
     <None Include="../../src/Tickwire.Fix/Spec/FIX44.xml" Link="FIX44.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../src/Tickwire.Fix/Spec/FIXT11.xml" Link="FIXT11.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../src/Tickwire.Fix/Spec/FIX50SP2.xml" Link="FIX50SP2.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

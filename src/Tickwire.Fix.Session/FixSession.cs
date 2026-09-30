@@ -634,6 +634,15 @@ public sealed partial class FixSession : IAsyncDisposable
             return;
         }
 
+        // FIXT: a message may name its own application version in ApplVerID(1128); we only speak the session's.
+        if (_settings.DefaultApplVerID is { } applVerId && msg.GetString(Tags.ApplVerID) is { } own && own != applVerId)
+        {
+            var text = $"ApplVerID(1128)={own} is not supported on this session; use {applVerId} or omit it";
+            Log(SessionLogLevel.Warning, $"Rejected {msg.MsgSeqNum}: {text}");
+            await SendRejectAsync(msg, SessionRejectReason.ValueIsIncorrect, Tags.ApplVerID, text).ConfigureAwait(false);
+            return;
+        }
+
         if (_settings.ValidateMessages && _settings.Dictionary.Validate(msg) is { } issue)
         {
             Log(SessionLogLevel.Warning, $"Rejected {msg.MsgSeqNum}: {issue.Text}");
@@ -667,6 +676,17 @@ public sealed partial class FixSession : IAsyncDisposable
             await SendLogoutAsync($"HeartBtInt must be between {_settings.MinHeartBtInt} and {_settings.MaxHeartBtInt}")
                 .ConfigureAwait(false);
             await DisconnectAsync("Invalid HeartBtInt on Logon").ConfigureAwait(false);
+            return;
+        }
+
+        if (_settings.DefaultApplVerID is { } expectedVer && msg.GetString(Tags.DefaultApplVerID) != expectedVer)
+        {
+            var got = msg.GetString(Tags.DefaultApplVerID);
+            Wire(FixDirection.Inbound, msg.Raw.ToArray(), MessageDisposition.Rejected, "Unsupported DefaultApplVerID");
+            await SendLogoutAsync(got is null
+                ? $"DefaultApplVerID(1137) is required on a FIXT.1.1 Logon; use {expectedVer} (FIX.5.0SP2)"
+                : $"DefaultApplVerID(1137)={got} is not supported; use {expectedVer} (FIX.5.0SP2)").ConfigureAwait(false);
+            await DisconnectAsync("Unsupported DefaultApplVerID").ConfigureAwait(false);
             return;
         }
 
@@ -850,6 +870,8 @@ public sealed partial class FixSession : IAsyncDisposable
         {
             logon.Set(Tags.ResetSeqNumFlag, true);
         }
+
+        logon.Set(Tags.DefaultApplVerID, _settings.DefaultApplVerID);
 
         await SendAdminAsync(logon).ConfigureAwait(false);
     }

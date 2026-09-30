@@ -27,12 +27,14 @@ public readonly record struct DecodedField(int Tag, string Name, string Value, s
 public readonly record struct ValidationIssue(SessionRejectReason Reason, int RefTagId, string Text);
 
 /// <summary>
-/// FIX 4.4 data dictionary loaded from the standard XML spec (the same format QuickFIX uses).
+/// FIX data dictionary loaded from the standard XML spec (the same format QuickFIX uses): FIX 4.4, or FIXT 1.1 with
+/// FIX 5.0 SP2 application messages.
 /// Supplies names for decoding and the rules for session-level validation.
 /// </summary>
 public sealed class FixDictionary
 {
     private static readonly Lazy<FixDictionary> Fix44Lazy = new(LoadEmbeddedFix44);
+    private static readonly Lazy<FixDictionary> Fixt11Lazy = new(LoadEmbeddedFixt11);
 
     private readonly FrozenDictionary<int, FieldDef> _fields;
     private readonly FrozenDictionary<string, FieldDef> _fieldsByName;
@@ -55,6 +57,12 @@ public sealed class FixDictionary
 
     /// <summary>The bundled FIX 4.4 dictionary.</summary>
     public static FixDictionary Fix44 => Fix44Lazy.Value;
+
+    /// <summary>FIXT 1.1 session layer with the FIX 5.0 SP2 application messages (BeginString FIXT.1.1).</summary>
+    public static FixDictionary Fixt11 => Fixt11Lazy.Value;
+
+    /// <summary>The dictionary for a BeginString; FIX 4.4 for anything unrecognised.</summary>
+    public static FixDictionary For(string? beginString) => beginString == "FIXT.1.1" ? Fixt11 : Fix44;
 
     public string BeginString { get; }
     public IEnumerable<FieldDef> AllFields => _fields.Values;
@@ -308,10 +316,25 @@ public sealed class FixDictionary
     {
         var root = doc.Root ?? throw new InvalidDataException("Empty dictionary");
         var beginString = $"FIX.{root.Attribute("major")?.Value}.{root.Attribute("minor")?.Value}";
+        return Build(beginString, root, [root]);
+    }
 
+    /// <summary>
+    /// FIXT: the transport dictionary (FIXT11.xml) supplies the header, trailer and session messages; the application
+    /// dictionary (e.g. FIX50SP2.xml) the business messages and components. Fields are merged from both.
+    /// </summary>
+    public static FixDictionary LoadFixt(XDocument transport, XDocument application)
+    {
+        var t = transport.Root ?? throw new InvalidDataException("Empty transport dictionary");
+        var a = application.Root ?? throw new InvalidDataException("Empty application dictionary");
+        return Build($"FIXT.{t.Attribute("major")?.Value}.{t.Attribute("minor")?.Value}", t, [t, a]);
+    }
+
+    private static FixDictionary Build(string beginString, XElement session, IReadOnlyList<XElement> parts)
+    {
         var fields = new Dictionary<int, FieldDef>();
         var nameToTag = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var f in root.Element("fields")!.Elements("field"))
+        foreach (var f in parts.SelectMany(p => p.Element("fields")!.Elements("field")))
         {
             var number = int.Parse(f.Attribute("number")!.Value, CultureInfo.InvariantCulture);
             var name = f.Attribute("name")!.Value;
@@ -321,19 +344,22 @@ public sealed class FixDictionary
             nameToTag[name] = number;
         }
 
-        var components = root.Element("components")?.Elements("component")
-            .ToDictionary(c => c.Attribute("name")!.Value, c => c) ?? [];
+        var components = new Dictionary<string, XElement>(StringComparer.Ordinal);
+        foreach (var c in parts.SelectMany(p => p.Element("components")?.Elements("component") ?? []))
+        {
+            components[c.Attribute("name")!.Value] = c;
+        }
 
         var headerTags = new HashSet<int>();
         var headerRequired = new List<int>();
         var headerGroups = new HashSet<int>();
-        Walk(root.Element("header")!, nameToTag, components, headerTags, headerGroups, headerRequired, true, false);
+        Walk(session.Element("header")!, nameToTag, components, headerTags, headerGroups, headerRequired, true, false);
 
         var trailerTags = new HashSet<int>();
-        Walk(root.Element("trailer")!, nameToTag, components, trailerTags, [], [], true, false);
+        Walk(session.Element("trailer")!, nameToTag, components, trailerTags, [], [], true, false);
 
         var messages = new Dictionary<string, MessageDef>(StringComparer.Ordinal);
-        foreach (var m in root.Element("messages")!.Elements("message"))
+        foreach (var m in parts.SelectMany(p => p.Element("messages")!.Elements("message")))
         {
             var allowed = new HashSet<int>();
             var groupMembers = new HashSet<int>();
@@ -410,10 +436,14 @@ public sealed class FixDictionary
         return sb.ToString();
     }
 
-    private static FixDictionary LoadEmbeddedFix44()
+    private static FixDictionary LoadEmbeddedFix44() => Load(Embedded("FIX44.xml"));
+
+    private static FixDictionary LoadEmbeddedFixt11() => LoadFixt(Embedded("FIXT11.xml"), Embedded("FIX50SP2.xml"));
+
+    private static XDocument Embedded(string name)
     {
-        using var stream = typeof(FixDictionary).Assembly.GetManifestResourceStream("Tickwire.Fix.Spec.FIX44.xml")
-            ?? throw new InvalidOperationException("FIX44.xml resource missing");
-        return Load(stream);
+        using var stream = typeof(FixDictionary).Assembly.GetManifestResourceStream($"Tickwire.Fix.Spec.{name}")
+            ?? throw new InvalidOperationException($"{name} resource missing");
+        return XDocument.Load(stream);
     }
 }

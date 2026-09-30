@@ -52,6 +52,12 @@ public sealed record SessionSettings
     public bool ValidateMessages { get; init; } = true;
 
     public FixDictionary Dictionary { get; init; } = FixDictionary.Fix44;
+
+    /// <summary>
+    /// FIXT 1.1 sessions only: the application version both sides use, sent as DefaultApplVerID(1137) on Logon and
+    /// required from the peer. "9" is FIX 5.0 SP2. Null for FIX 4.x sessions.
+    /// </summary>
+    public string? DefaultApplVerID { get; init; }
 }
 
 public enum FixDirection

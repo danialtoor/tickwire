@@ -12,5 +12,11 @@ test('@local provisioning a trading session and a drop copy', async ({ page }) =
   await expect(page.getByText(/^DC-[A-Z0-9]{6}$/)).toBeVisible()
   await expect(page.getByText('CopyMsgIndicator(797)=Y')).toBeVisible()
   await expect(page.getByRole('button', { name: /BYO-.* · trading/ })).toBeVisible()
+
+  await page.getByRole('radio', { name: 'Trading' }).click()
+  await page.getByRole('radio', { name: 'FIXT 1.1 / 5.0 SP2' }).click()
+  await page.getByRole('button', { name: 'Provision credentials' }).click()
+  await expect(page.getByText('BeginString=FIXT.1.1')).toBeVisible()
+  await expect(page.getByText('DefaultApplVerID=FIX.5.0SP2')).toBeVisible()
   noErrors()
 })

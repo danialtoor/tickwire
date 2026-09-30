@@ -161,7 +161,7 @@ export default function Connect() {
 
           <div className="grid gap-4 md:grid-cols-3">
             <Step n={1} title="Get the dictionary">
-              Use the standard FIX44.xml from QuickFIX. Tickwire adds custom tags 20001 (TheoValue) and 20002 (UnderlyingLastPx) on
+              Use the standard {info.beginString === 'FIXT.1.1' ? 'FIXT11.xml and FIX50SP2.xml' : 'FIX44.xml'} from QuickFIX. Tickwire adds custom tags 20001 (TheoValue) and 20002 (UnderlyingLastPx) on
               ExecutionReports, so set <code className="num">ValidateUserDefinedFields=N</code>.
             </Step>
             <Step n={2} title="Log on and trade">
@@ -179,7 +179,10 @@ export default function Connect() {
   )
 }
 
-const VERSIONS = [{ value: 'FIX.4.4', label: 'FIX 4.4' }]
+const VERSIONS = [
+  { value: 'FIX.4.4', label: 'FIX 4.4' },
+  { value: 'FIXT.1.1', label: 'FIXT 1.1 / 5.0 SP2', hint: 'FIX 5.0 SP2 messages over the FIXT 1.1 session layer (DefaultApplVerID 9)' },
+]
 
 function Segmented({
   label,

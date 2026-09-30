@@ -125,12 +125,12 @@ public sealed class ApiTests(ApiFactory factory)
         var (http, guest) = await factory.NewGuestAsync();
         var call = await AtmCallAsync(http);
 
-        var resp = await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 3));
+        var resp = await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 2));
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
 
         var rows = await Eventually(() => http.GetFromJsonAsync<List<OrderRowDto>>("/api/orders", ApiFactory.Json),
             r => r.Count == 1 && r[0].Order.Status == "Filled" && r[0].InSync);
-        rows[0].ClientView!.CumQty.Should().Be(3);
+        rows[0].ClientView!.CumQty.Should().Be(2);
 
         var traffic = await http.GetFromJsonAsync<SessionTrafficDto>($"/api/sessions/{guest.ClientCompId}/messages", ApiFactory.Json);
         traffic!.Messages.Should().Contain(m => m.Side == "venue" && m.Direction == "in" && m.MsgType == "D");
@@ -159,7 +159,9 @@ public sealed class ApiTests(ApiFactory factory)
         var call = await AtmCallAsync(http);
 
         (await http.PostAsJsonAsync($"/api/sessions/{guest.ClientCompId}/chaos", new ChaosBody("drop-venue", 2))).EnsureSuccessStatusCode();
-        await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask, 2));
+        // Priced through the ask so it fills even if the market ticks first: the gap is only noticed when a later
+        // report (the fill) arrives after the two dropped ones.
+        await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask + 0.10m, 2));
 
         var traffic = await Eventually(() => http.GetFromJsonAsync<SessionTrafficDto>($"/api/sessions/{guest.ClientCompId}/messages",
                 ApiFactory.Json),
@@ -201,12 +203,13 @@ public sealed class ApiTests(ApiFactory factory)
     {
         var (http, guest) = await factory.NewGuestAsync();
         var call = await AtmCallAsync(http);
-        await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask! + 0.10m, 3));
+        // 2 lots: the router sends the order whole to one exchange, and every market maker shows at least 2.
+        await ApiFactory.PlaceOrderAsync(http, new NewOrderBody(call.Id, "buy", "limit", "day", call.Ask! + 0.10m, 2));
 
         var portfolio = await Eventually(() => http.GetFromJsonAsync<JsonElement?>("/api/positions", ApiFactory.Json),
             p => p!.Value.GetProperty("positions").GetArrayLength() == 1);
         var pos = portfolio!.Value.GetProperty("positions")[0];
-        pos.GetProperty("quantity").GetDecimal().Should().Be(3);
+        pos.GetProperty("quantity").GetDecimal().Should().Be(2);
         pos.GetProperty("contract").GetProperty("id").GetInt32().Should().Be(call.Id);
         portfolio.Value.GetProperty("delta").GetDouble().Should().BePositive();
 

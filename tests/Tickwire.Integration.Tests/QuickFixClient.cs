@@ -12,8 +12,14 @@ internal sealed class QuickFixClient : IApplication, IDisposable
 {
     private readonly SocketInitiator _initiator;
 
-    public QuickFixClient(int port, string sender = "CLIENT", string target = "TICKWIRE", bool resetOnLogon = true)
+    public QuickFixClient(int port, string sender = "CLIENT", string target = "TICKWIRE", bool resetOnLogon = true,
+        string beginString = "FIX.4.4")
     {
+        var fixt = beginString == "FIXT.1.1";
+        var dictionaries = fixt
+            ? $"TransportDataDictionary={Path.Combine(AppContext.BaseDirectory, "FIXT11.xml")}\n"
+                + $"AppDataDictionary={Path.Combine(AppContext.BaseDirectory, "FIX50SP2.xml")}\nDefaultApplVerID=FIX.5.0SP2"
+            : $"DataDictionary={Path.Combine(AppContext.BaseDirectory, "FIX44.xml")}";
         var config = $"""
             [DEFAULT]
             ConnectionType=initiator
@@ -24,17 +30,17 @@ internal sealed class QuickFixClient : IApplication, IDisposable
             SocketConnectHost=127.0.0.1
             SocketConnectPort={port}
             UseDataDictionary=Y
-            DataDictionary={Path.Combine(AppContext.BaseDirectory, "FIX44.xml")}
+            {dictionaries}
             ValidateUserDefinedFields=N
             ResetOnLogon={(resetOnLogon ? "Y" : "N")}
 
             [SESSION]
-            BeginString=FIX.4.4
+            BeginString={beginString}
             SenderCompID={sender}
             TargetCompID={target}
             """;
         var settings = new SessionSettings(new StringReader(config));
-        SessionId = new SessionID("FIX.4.4", sender, target);
+        SessionId = new SessionID(beginString, sender, target);
         _initiator = new SocketInitiator(this, new MemoryStoreFactory(), settings, new NullLogFactory(),
             new DefaultMessageFactory());
     }

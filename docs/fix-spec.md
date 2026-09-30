@@ -11,7 +11,7 @@ session behaves when things go wrong. Every example below is real output from th
 |---|---|---|
 | FIX over TCP | `tickwire-api.fly.dev:9878` (plain TCP, no TLS) | `localhost:9878` |
 | FIX over WebSocket | `wss://tickwire-api.fly.dev/fix/ws` | `ws://localhost:8080/fix/ws` |
-| Protocol | FIX 4.4 (`8=FIX.4.4`) | |
+| Protocol | FIX 4.4 (`8=FIX.4.4`), or FIX 5.0 SP2 over FIXT 1.1 (`8=FIXT.1.1`, `1137=9`) | |
 | TargetCompID (56) | `TICKWIRE` | |
 | SenderCompID (49) | issued at onboarding (`BYO-XXXXXX` trading, `DC-XXXXXX` drop copy) | |
 
@@ -20,6 +20,18 @@ the PowerShell module. They are tied to a guest account and expire after 24 hour
 
 WebSocket frames may carry one or more messages. Text frames may use `|` instead of SOH; replies use the same
 convention as the client.
+
+### FIXT 1.1 / FIX 5.0 SP2
+
+Provision with `POST /api/connect?version=FIXT.1.1` (or pick it on the Connect page). The session layer is FIXT 1.1
+and the application messages are FIX 5.0 SP2; everything in §3 works the same, and the generated QuickFIX configs
+point at `FIXT11.xml` and `FIX50SP2.xml`.
+
+- Logon must carry `DefaultApplVerID(1137)=9` (FIX.5.0SP2). Anything else, or nothing, gets a Logout explaining why.
+  The venue's Logon reply carries `1137=9` too.
+- `ApplVerID(1128)` in an application message's header is optional; if present it must be `9`, otherwise the
+  message gets a session Reject(3) with `373=5` and `371=1128`.
+- Inbound messages are validated against the FIX 5.0 SP2 dictionary, and outbound reports conform to it.
 
 ## 2. Session layer
 

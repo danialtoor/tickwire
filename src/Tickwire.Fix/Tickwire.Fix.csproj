@@ -7,6 +7,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Spec/FIX44.xml" LogicalName="Tickwire.Fix.Spec.FIX44.xml" />
+    <EmbeddedResource Include="Spec/FIXT11.xml" LogicalName="Tickwire.Fix.Spec.FIXT11.xml" />
+    <EmbeddedResource Include="Spec/FIX50SP2.xml" LogicalName="Tickwire.Fix.Spec.FIX50SP2.xml" />
     <None Include="Spec/QUICKFIX-LICENSE.txt" />
   </ItemGroup>
 

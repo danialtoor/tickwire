@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Tickwire.Engine;
 using Tickwire.Fix;
+using Tickwire.Fix.Dictionary;
 using Tickwire.Fix.Session;
 using Tickwire.Fix.Session.Store;
 using Tickwire.Fix.Session.Transport;
@@ -110,6 +111,8 @@ public sealed class SessionManager : ISessionResolver, IAsyncDisposable
                 Id = id,
                 Role = SessionRole.Acceptor,
                 HeartBtInt = config.HeartBtInt,
+                Dictionary = FixDictionary.For(config.BeginString),
+                DefaultApplVerID = config.BeginString == Fixt11 ? "9" : null,
             }, store, _gateway, _time, _loggers.CreateLogger("Tickwire.Session"), _tap.Observer(config.Key, "venue", isVenueSide: true));
             if (config.IsDropCopy)
             {
@@ -186,7 +189,10 @@ public sealed class SessionManager : ISessionResolver, IAsyncDisposable
         }
     }
 
-    public static readonly IReadOnlyList<string> SupportedBeginStrings = ["FIX.4.4"];
+    public const string Fixt11 = "FIXT.1.1";
+
+    /// <summary>FIX 4.4, or FIXT 1.1 carrying FIX 5.0 SP2 (DefaultApplVerID 9) for external sessions.</summary>
+    public static readonly IReadOnlyList<string> SupportedBeginStrings = ["FIX.4.4", Fixt11];
 
     /// <summary>
     /// Adds a TCP session to a client so they can connect their own FIX engine: a trading session (BYO-xxxxxx) or a

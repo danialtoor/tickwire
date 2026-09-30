@@ -95,3 +95,36 @@ public class DictionaryTests
         Dict.Validate(b.ToMessage(TestMessages.Header()))!.Value.Reason.Should().Be(SessionRejectReason.InvalidMsgType);
     }
 }
+
+public class FixtDictionaryTests
+{
+    private static readonly FixDictionary Dict = FixDictionary.Fixt11;
+
+    [Fact]
+    public void Merges_the_FIXT11_session_layer_with_FIX50SP2_messages()
+    {
+        Dict.BeginString.Should().Be("FIXT.1.1");
+        FixDictionary.For("FIXT.1.1").Should().BeSameAs(Dict);
+        FixDictionary.For("FIX.4.4").Should().BeSameAs(FixDictionary.Fix44);
+        Dict.IsHeaderTag(Tags.ApplVerID).Should().BeTrue();
+        Dict.Message("A")!.IsAdmin.Should().BeTrue();
+        Dict.Message("A")!.RequiredTags.Should().Contain(Tags.DefaultApplVerID);
+        Dict.MessageName("AB").Should().Be("NewOrderMultileg");
+        Dict.Field(Tags.LastLiquidityInd)!.Name.Should().Be("LastLiquidityInd");
+    }
+
+    [Fact]
+    public void Validates_a_FIX50SP2_NewOrderSingle_and_catches_a_missing_required_tag()
+    {
+        using var b = new FixMessageBuilder(MsgTypes.NewOrderSingle);
+        b.Set(Tags.ClOrdID, "C1").Set(Tags.Symbol, "SPY").Set(Tags.Side, '1')
+            .SetUtcTimestamp(Tags.TransactTime, TestMessages.SendingTime).Set(Tags.OrdType, '2').Set(Tags.Price, 1.5m).Set(Tags.OrderQty, 5m);
+        var header = new FixHeader("FIXT.1.1", "CLIENT", "TICKWIRE", 2, TestMessages.SendingTime);
+        Dict.Validate(b.ToMessage(header)).Should().BeNull();
+
+        using var missing = new FixMessageBuilder(MsgTypes.NewOrderSingle);
+        missing.Set(Tags.ClOrdID, "C2").Set(Tags.Symbol, "SPY").Set(Tags.OrdType, '1')
+            .SetUtcTimestamp(Tags.TransactTime, TestMessages.SendingTime);
+        Dict.Validate(missing.ToMessage(header))!.Value.Reason.Should().Be(SessionRejectReason.RequiredTagMissing);
+    }
+}

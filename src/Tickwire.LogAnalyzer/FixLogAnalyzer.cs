@@ -299,7 +299,7 @@ public static partial class FixLogAnalyzer
     {
         foreach (var (idx, m) in parsed.OrderBy(kv => kv.Key))
         {
-            if (!m.IsIntact || Dict.Validate(m) is not { } issue)
+            if (!m.IsIntact || FixDictionary.For(m.BeginString).Validate(m) is not { } issue)
             {
                 continue;
             }

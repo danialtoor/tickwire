@@ -13,6 +13,9 @@
   directs them. Fills carry LastMkt(30), Commission(12)/CommType(13) and LastLiquidityInd(851). Spread legs take the
   best exchange per leg. Consolidated NBBO and per-exchange quotes in the book, a route picker in the ticket, venue
   and fees in the blotter.
+- **FIXT 1.1 / FIX 5.0 SP2**: external sessions can use `8=FIXT.1.1` with `DefaultApplVerID(1137)=9`, validated
+  against the FIXT11 and FIX50SP2 dictionaries. Generated QuickFIX configs use TransportDataDictionary and
+  AppDataDictionary. QuickFIX/n interop test on FIXT.
 
 ## 1.1.0 (2026-09-30)
 

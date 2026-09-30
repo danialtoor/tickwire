@@ -100,6 +100,11 @@ public static class Tags
     public const int CopyMsgIndicator = 797;
     public const int LastLiquidityInd = 851;
 
+    /// <summary>FIXT 1.1: the application version of one message (header), and the session's default (Logon).</summary>
+    public const int ApplVerID = 1128;
+
+    public const int DefaultApplVerID = 1137;
+
     /// <summary>Tickwire custom tag (user-defined range): theoretical value of the option at the time of the report.</summary>
     public const int TheoValue = 20001;
 
@@ -112,7 +117,8 @@ public static class Tags
         BeginString or BodyLength or MsgType or SenderCompID or TargetCompID or MsgSeqNum or SendingTime
             or PossDupFlag or PossResend or OrigSendingTime or OnBehalfOfCompID or DeliverToCompID
             or SenderSubID or TargetSubID or SecureDataLen or SecureData or LastMsgSeqNumProcessed
-            or 116 or 129 or 142 or 143 or 144 or 145 or 347 or 212 or 213 or 627 or 628 or 629 or 630 => true,
+            or 116 or 129 or 142 or 143 or 144 or 145 or 347 or 212 or 213 or 627 or 628 or 629 or 630
+            or ApplVerID or 1129 or 1156 => true,
         _ => false,
     };
 
