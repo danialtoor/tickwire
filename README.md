@@ -1,7 +1,7 @@
 # Tickwire
 
-**A FIX 4.4 engine and options execution gateway, written from scratch in C#/.NET 10, trading against a simulated
-options market.** Every click in the web trader produces real FIX messages you can inspect, break on purpose, and
+**A FIX 4.4 and FIXT 1.1 / FIX 5.0 SP2 engine and options execution gateway, written from scratch in C#/.NET 10,
+routing across a simulated three-exchange options market.** Every click in the web trader produces real FIX messages you can inspect, break on purpose, and
 watch recover.
 
 [![CI](https://github.com/danialtoor/tickwire/actions/workflows/ci.yml/badge.svg)](https://github.com/danialtoor/tickwire/actions/workflows/ci.yml)
@@ -25,8 +25,13 @@ watch recover.
    gap-fills its heartbeats (`35=4, 123=Y`). The blotter shows the client's own view catching up with the OMS.
    Other faults: corrupt a checksum, go silent until `TestRequest` and logout, rewind sequence numbers.
 3. **Debug a log.** Open **Log Analyzer**, load `broken-state-machine`, and read what went wrong and how to fix it.
-4. **Bring your own engine.** On **Connect via FIX**, provision CompIDs and download a QuickFIX/n, QuickFIX/J or
-   Python config. Your orders show up in the same blotter.
+4. **Bring your own engine.** On **Connect via FIX**, provision CompIDs (FIX 4.4 or FIXT 1.1) and download a
+   QuickFIX/n, QuickFIX/J or Python config. Your orders show up in the same blotter. Add a **drop copy** session to
+   get a receive-only copy of every ExecutionReport.
+5. **Watch the router.** Pick **SMART** or a specific exchange in the ticket. The book shows each exchange's quote
+   next to the consolidated NBBO; the New report's Text says where the order went and why, and fills carry
+   `LastMkt(30)`, the exchange fee in `Commission(12)` and `LastLiquidityInd(851)`. **Positions** shows P&L and
+   portfolio greeks, with delta and vega limits enforced before each order.
 
 ```bash
 pip install simplefix
@@ -39,10 +44,10 @@ python clients/python/example.py --api https://tickwire-api.fly.dev
 
 | | |
 |---|---|
-| **FIX codec** ([`Tickwire.Fix`](src/Tickwire.Fix)) | Zero-copy parser over `ReadOnlyMemory<byte>`, pooled builder, `System.IO.Pipelines` stream framer that resynchronizes after a bad BodyLength, vectorized checksum, FIX 4.4 data dictionary (loaded from `FIX44.xml`) with session-level validation. |
-| **Session layer** ([`Tickwire.Fix.Session`](src/Tickwire.Fix.Session)) | Logon/logout, heartbeats, TestRequest, gap detection and queuing, ResendRequest, PossDup resend, GapFill, "MsgSeqNum too low", garbled-message handling per spec, persistent sequence numbers, TCP / WebSocket / in-memory transports, fault injection. |
-| **OMS** ([`Tickwire.Engine`](src/Tickwire.Engine)) | Multi-leg spreads via NewOrderMultileg (35=AB) with all-or-none leg execution and strategy/leg reports (442=3/2), explicit order state machine, ClOrdID/OrigClOrdID chains, `CumQty + LeavesQty = OrderQty` invariants, pre-trade risk (size, notional, fat-finger band vs theo, open orders, allowed products, throttle), per-client and global kill switch, cancel-on-disconnect. |
-| **Simulated venue** ([`Tickwire.Venue`](src/Tickwire.Venue), [`Tickwire.Pricing`](src/Tickwire.Pricing)) | Price-time priority books for about 540 option contracts, Black-Scholes theo and greeks on a skewed surface, GBM underlyings, market makers that requote every tick, implied vol by Newton with bisection fallback, OCC symbology. |
+| **FIX codec** ([`Tickwire.Fix`](src/Tickwire.Fix)) | Zero-copy parser over `ReadOnlyMemory<byte>`, pooled builder, `System.IO.Pipelines` stream framer that resynchronizes after a bad BodyLength, vectorized checksum, FIX 4.4 and FIXT 1.1 / FIX 5.0 SP2 data dictionaries (loaded from the QuickFIX XML specs) with session-level validation. |
+| **Session layer** ([`Tickwire.Fix.Session`](src/Tickwire.Fix.Session)) | Logon/logout, heartbeats, TestRequest, gap detection and queuing, ResendRequest, PossDup resend, GapFill, "MsgSeqNum too low", garbled-message handling per spec, persistent sequence numbers, FIXT 1.1 DefaultApplVerID/ApplVerID, drop copy sessions (797=Y), TCP / WebSocket / in-memory transports, fault injection. |
+| **OMS** ([`Tickwire.Engine`](src/Tickwire.Engine)) | Multi-leg spreads via NewOrderMultileg (35=AB) with all-or-none leg execution and strategy/leg reports (442=3/2), explicit order state machine, ClOrdID/OrigClOrdID chains, `CumQty + LeavesQty = OrderQty` invariants, pre-trade risk (size, notional, fat-finger band vs theo, open orders, allowed products, throttle, portfolio delta and vega), positions with average cost, realized/unrealized P&L and greeks, per-client and global kill switch, cancel-on-disconnect. |
+| **Simulated venue** ([`Tickwire.Venue`](src/Tickwire.Venue), [`Tickwire.Pricing`](src/Tickwire.Pricing)) | Three exchanges with their own books, market makers and maker/taker fees, a smart order router (best all-in price, rebate-seeking for passive orders, ExDestination to direct), price-time priority books for about 540 option contracts each, Black-Scholes theo and greeks on a skewed surface, GBM underlyings, market makers that requote every tick, implied vol by Newton with bisection fallback, OCC symbology. |
 | **API** ([`Tickwire.Api`](src/Tickwire.Api)) | ASP.NET Core minimal APIs + SignalR, guest provisioning, per-client onboarding, OpenAPI at `/swagger`, MySQL via EF Core (config) and Dapper (hot path). |
 | **Live market data** ([`Tickwire.MarketData`](src/Tickwire.MarketData)) | Bring your own key for SpiderRock (MLink), Databento (OPRA gateway), Polygon.io, Tradier or Alpaca; real quotes show beside the simulated ones, for that visitor only. See [docs/market-data.md](docs/market-data.md). |
 | **Support tooling** | [Log Analyzer](src/Tickwire.LogAnalyzer) (library, `tickwire` CLI, API, and a TypeScript port held to the same test corpus), [PowerShell module](tools/powershell), [Python client and load generator](clients/python), [Rules of Engagement](docs/fix-spec.md), [support runbook](docs/runbook.md). |

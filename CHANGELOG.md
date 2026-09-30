@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 (2026-09-30)
 
 - **Positions and portfolio risk**: average-cost positions from outright and spread leg fills, realized and
   unrealized P&L marked at mid, portfolio delta/gamma/vega/theta, cash settlement at intrinsic on expiry.
