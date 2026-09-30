@@ -12,12 +12,14 @@ Describe 'Tickwire.Admin' {
     }
 
     It 'onboards a client, changes its limits and kills it' {
-        $client = New-FixClient -Confirm:$false
+        $client = New-FixClient -WithDropCopy -Confirm:$false
         $client.SenderCompID | Should -Match '^BYO-'
+        $client.DropCopyCompID | Should -Match '^DC-'
         Connect-Tickwire -Token $client.Token | Out-Null
 
         $limits = Set-RiskLimit -ClientId $client.ClientId -MaxOrderQty 5 -AllowedUnderlyings SPY -Confirm:$false
         $limits.maxOrderQty | Should -Be 5
+        $limits.maxAbsDelta | Should -Be 10000
 
         $kill = Invoke-KillSwitch -Client $client.ClientId -Confirm:$false
         $kill.Engaged | Should -BeTrue

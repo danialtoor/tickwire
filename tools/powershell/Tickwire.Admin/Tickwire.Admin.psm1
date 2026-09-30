@@ -119,7 +119,7 @@ function New-FixClient {
         ClientId     = $connect.clientId
         SenderCompID = $connect.senderCompID
         TargetCompID = $connect.targetCompID
-        DropCopyCompID = $dropCopy?.senderCompID
+        DropCopyCompID = if ($dropCopy) { $dropCopy.senderCompID } else { $null }
         Host         = $connect.host
         Port         = $connect.port
         Token        = $guest.token
