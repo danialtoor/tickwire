@@ -41,7 +41,7 @@ jobs:
           reportgenerator -reports:"coverage/**/coverage.cobertura.xml" -targetdir:coverage/report \
             -reporttypes:"MarkdownSummaryGithub;Badges" -assemblyfilters:"+Tickwire.Fix;+Tickwire.Fix.Session;+Tickwire.Engine;+Tickwire.Venue;+Tickwire.Pricing;+Tickwire.LogAnalyzer"
           cat coverage/report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-${{ matrix.os }}
@@ -114,7 +114,7 @@ jobs:
       - name: API logs
         if: failure()
         run: docker compose logs api --tail 300
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
